@@ -7,6 +7,12 @@ breaking change is published automatically. Entries are generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by
 [conventional-changelog](https://github.com/conventional-changelog/conventional-changelog).
 
+## [0.2.0](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.1.0...v0.2.0) (2026-09-28)
+
+### Features
+
+- keep ViewHelper elements with unbalanced HTML as written ([a6f15d9](https://github.com/beardcoder/prettier-plugin-fluid/commit/a6f15d9b502d56fc7add98dd88d00719b0141a32))
+
 ## [0.1.0](https://github.com/beardcoder/prettier-plugin-fluid/releases/tag/v0.1.0) (2026-09-28)
 
 ### Features

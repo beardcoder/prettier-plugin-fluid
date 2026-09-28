@@ -36,7 +36,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepublishOnly": "npm run check",
-    "test": "node --test test/",
+    "test": "node --test test/format.test.js",
     "typecheck": "tsc"
   },
   "devDependencies": {

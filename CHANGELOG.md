@@ -7,6 +7,12 @@ breaking change is published automatically. Entries are generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by
 [conventional-changelog](https://github.com/conventional-changelog/conventional-changelog).
 
+## [0.4.0](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.3.0...v0.4.0) (2026-09-28)
+
+### Features
+
+- add fluidFinalNewline to keep or omit the final line break ([12c90a3](https://github.com/beardcoder/prettier-plugin-fluid/commit/12c90a33483e6fbc40c5dbf2e737e520b02ebee9))
+
 ## [0.3.0](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.2.0...v0.3.0) (2026-09-28)
 
 ### Features

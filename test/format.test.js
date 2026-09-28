@@ -124,9 +124,31 @@ describe("shorthand syntax", () => {
     await assertFormat(source, source);
   });
 
-  test("multi-line expressions are kept verbatim", async () => {
-    const source = `<f:render partial="Card" arguments="{\n  title: item.title,\n  link: item.link\n}" />\n`;
-    assert.equal(await format(source), source);
+  test("multi-line expressions break the tag and move with its indent", async () => {
+    await assertFormat(
+      `<f:render partial="Card" arguments="{\n  title: item.title,\n  link: item.link\n}" />\n`,
+      `<f:render
+  partial="Card"
+  arguments="{
+    title: item.title,
+    link: item.link
+  }"
+/>
+`,
+    );
+    // nested one level deeper: continuation lines move along
+    await assertFormat(
+      `<div><f:render partial="Card" arguments="{\n  title: item.title\n}" /></div>\n`,
+      `<div>
+  <f:render
+    partial="Card"
+    arguments="{
+      title: item.title
+    }"
+  />
+</div>
+`,
+    );
   });
 
   test("non-Fluid braces and CDATA are left alone", async () => {
@@ -170,6 +192,66 @@ describe("attribute quotes", () => {
       () => restore(broken, state),
       /cannot quote the attribute value/,
     );
+  });
+});
+
+describe("verbatim ViewHelpers", () => {
+  test("f:spaceless content is kept as written", async () => {
+    const source = `<div>\n  <f:spaceless><f:if condition="{a}">text-bg-{b}</f:if> <f:if condition="{c}">x</f:if></f:spaceless>\n</div>\n`;
+    await assertFormat(source, source);
+  });
+
+  test("fluidVerbatimViewHelpers adds more, with wildcards", async () => {
+    const source = `<div>\n  <my:classes><f:if condition="{a}">a</f:if> b</my:classes>\n</div>\n`;
+    await assertFormat(source, source, { fluidVerbatimViewHelpers: ["my:*"] });
+  });
+});
+
+describe("fluidIndentRoot: false", () => {
+  const options = { fluidIndentRoot: false };
+
+  test("does not indent the content of <fluid>", async () => {
+    await assertFormat(
+      `<fluid data-namespace-typo3-fluid="true" xmlns:f="http://typo3.org/ns/TYPO3/CMS/Fluid/ViewHelpers">\n<f:if condition="{a}"><p>x</p></f:if>\n</fluid>`,
+      `<fluid
+  data-namespace-typo3-fluid="true"
+  xmlns:f="http://typo3.org/ns/TYPO3/CMS/Fluid/ViewHelpers"
+>
+
+<f:if condition="{a}"><p>x</p></f:if>
+
+</fluid>
+`,
+      options,
+    );
+  });
+
+  test("works for <html data-namespace-typo3-fluid> and keeps leading comments", async () => {
+    await assertFormat(
+      `<!-- @format -->\n<html data-namespace-typo3-fluid="true"><f:section name="Main"><p>x</p></f:section></html>`,
+      `<!-- @format -->\n<html data-namespace-typo3-fluid="true">\n\n<f:section name="Main"><p>x</p></f:section>\n\n</html>\n`,
+      options,
+    );
+  });
+
+  test("fluidRootAttributePerLine", async () => {
+    await assertFormat(
+      `<fluid data-namespace-typo3-fluid="true">\n<p>x</p>\n</fluid>`,
+      `<fluid\n  data-namespace-typo3-fluid="true"\n>\n\n<p>x</p>\n\n</fluid>\n`,
+      { ...options, fluidRootAttributePerLine: true },
+    );
+  });
+
+  test("other roots are formatted as usual", async () => {
+    await assertFormat(`<div><p>x</p></div>`, `<div><p>x</p></div>\n`, options);
+  });
+
+  test("errors point at the right line", async () => {
+    const source = `<fluid data-namespace-typo3-fluid="true">\n\n<div>\n  <section></div>\n</fluid>`;
+    await assert.rejects(format(source, options), (error) => {
+      assert.equal(error.loc.start.line, 4);
+      return true;
+    });
   });
 });
 

@@ -59,7 +59,9 @@ bunx prettier --write "**/Resources/Private/**/*.html"
 
 Use
 [`prettier-plugin-organize-attributes`](https://github.com/NiklasPor/prettier-plugin-organize-attributes).
-It sorts attributes on HTML tags and on ViewHelper tags:
+It sorts attributes on HTML tags and on ViewHelper tags. This order suits
+Fluid templates: the attributes that identify a ViewHelper call come first,
+then everything else alphabetically.
 
 ```json
 {
@@ -67,13 +69,30 @@ It sorts attributes on HTML tags and on ViewHelper tags:
     "@beardcoder/prettier-plugin-fluid",
     "prettier-plugin-organize-attributes"
   ],
-  "attributeGroups": ["$CLASS", "$ID", "$NAME", "$DATA", "$DEFAULT", "$ARIA"],
-  "attributeSort": "ASC"
+  "attributeGroups": [
+    "^data-namespace-typo3-fluid$",
+    "^xmlns$",
+    "^partial$",
+    "^section$",
+    "^name$",
+    "^type$",
+    "^each$",
+    "^as$",
+    "^key$",
+    "^tagName$",
+    "^src$",
+    "$DEFAULT"
+  ],
+  "attributeSort": "ASC",
+  "attributeIgnoreCase": true
 }
 ```
 
-organize-attributes matches namespaced attributes by their local name only
-(`xmlns:f` → `f`), so a `^xmlns` group does not work.
+organize-attributes matches namespaced attributes by their local name only:
+`xmlns:ce` is sorted as `ce`, so it would end up before
+`data-namespace-typo3-fluid`. That is why `data-namespace-typo3-fluid` needs a
+group of its own at the start. A `^xmlns` group only matches a plain `xmlns`
+attribute.
 
 ### Tailwind CSS
 
@@ -96,13 +115,51 @@ moves them to the front.
 
 ## Options
 
-| Option                   | Default | Description                                                                       |
-| ------------------------ | ------- | --------------------------------------------------------------------------------- |
-| `fluidBlockViewHelpers`  | `[]`    | Additional ViewHelpers laid out as blocks. Supports `*` wildcards.                |
-| `fluidInlineViewHelpers` | `[]`    | ViewHelpers laid out inline even if they are blocks by default. Takes precedence. |
+| Option                      | Default | Description                                                                                              |
+| --------------------------- | ------- | -------------------------------------------------------------------------------------------------------- |
+| `fluidBlockViewHelpers`     | `[]`    | Additional ViewHelpers laid out as blocks. Supports `*` wildcards.                                       |
+| `fluidInlineViewHelpers`    | `[]`    | ViewHelpers laid out inline even if they are blocks by default. Takes precedence.                        |
+| `fluidVerbatimViewHelpers`  | `[]`    | Additional ViewHelpers kept exactly as written, like `f:comment`. `f:spaceless` always is. Wildcards ok. |
+| `fluidIndentRoot`           | `true`  | Indent the content of the root `<fluid>` tag. See [root tag](#root-tag).                                 |
+| `fluidRootAttributePerLine` | `false` | With `fluidIndentRoot: false`: put every attribute of the root tag on its own line.                      |
 
 All standard Prettier options apply, such as `printWidth`, `tabWidth`,
 `bracketSameLine` and `singleAttributePerLine`.
+
+### Root tag
+
+TYPO3 recommends `<fluid data-namespace-typo3-fluid="true" …>` as the root of
+a template. Many projects do not indent its content. With
+`"fluidIndentRoot": false`, the root tag is formatted on its own and its
+content is not indented. An empty line follows the opening tag and precedes
+the closing tag:
+
+```html
+<fluid
+  data-namespace-typo3-fluid="true"
+  xmlns:f="http://typo3.org/ns/TYPO3/CMS/Fluid/ViewHelpers"
+>
+  <f:layout name="Default" />
+</fluid>
+```
+
+This applies to `<fluid>` and to any root tag with
+`data-namespace-typo3-fluid="true"`, such as `<html>`. Add
+`"fluidRootAttributePerLine": true` to always put the root tag's attributes
+on separate lines, as above.
+
+### Content that must not change
+
+Some ViewHelpers produce strings instead of markup, e.g. a class list built
+with `<f:if>` inside `<f:spaceless>`. Added line breaks or indentation would
+end up in that string. The content of `f:spaceless` is therefore kept exactly
+as written, like `f:comment`. Add your own ViewHelpers of this kind:
+
+```json
+{
+  "fluidVerbatimViewHelpers": ["my:classList", "my:format.*"]
+}
+```
 
 ### Custom ViewHelpers
 
@@ -128,9 +185,19 @@ To change the layout of a single tag, put `<!-- display: inline -->` or
 
 ### Ignoring code
 
+Exclude a single element with a comment:
+
 ```html
 <!-- prettier-ignore -->
 <f:if condition="{a}"><b>kept   exactly as written</b></f:if>
+```
+
+Exclude whole templates in `.prettierignore`, e.g. ones that are not valid
+HTML (see [limitations](#limitations)):
+
+```gitignore
+packages/*/Resources/Private/Partials/Legacy/**
+**/Templates/Page/Special.fluid.html
 ```
 
 The plugin also supports `requirePragma` and `insertPragma`
@@ -155,11 +222,18 @@ The plugin also supports `requirePragma` and `insertPragma`
   an error that points at the line and column in the template. Restructure
   them, or exclude them with `<!-- prettier-ignore -->` or `.prettierignore`.
 
-- As with plain HTML, Prettier completes implied end tags (`<li>a<li>b` →
-  `<li>a</li><li>b</li>`) and formats CSS in `style` attributes.
+- **Prettier itself changes some HTML**, just as for plain HTML files:
+  - Void elements are self-closed: `<img>` → `<img />`, `<br>` → `<br />`.
+  - Implied end tags are completed: `<li>a<li>b` → `<li>a</li><li>b</li>`.
+  - CSS in `style` attributes is normalized, e.g. a missing `;` is added.
+  - Short content is joined into one line: `<div>\n  x\n</div>` → `<div>x</div>`,
+    also inside ViewHelpers like `<f:else>`.
+  - Files end with exactly one line break.
 - A block ViewHelper inside inline content may add whitespace, just as Prettier
   does around block elements.
-- Multi-line Fluid expressions are kept as written and are not re-indented.
+- Multi-line Fluid expressions keep their line breaks. A tag containing one
+  always puts each attribute on its own line, and the expression's lines move
+  along with the tag's indentation.
 - Range formatting always formats the whole file.
 
 ## How it works

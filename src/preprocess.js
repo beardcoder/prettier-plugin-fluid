@@ -21,10 +21,16 @@
  *   `my:*` or `v:variable.*`.
  * @property {readonly string[]} [inlineViewHelpers] ViewHelpers formatted
  *   inline even though they are block by default. Wins over `blockViewHelpers`.
+ * @property {readonly string[]} [verbatimViewHelpers] Additional ViewHelpers
+ *   whose element is kept exactly as written, like `<f:comment>`.
+ * @property {number} [printWidth] Multi-line expressions get placeholders wider
+ *   than this, so a tag containing one always breaks its attributes.
  *
  * @typedef {object} Fragment
  * @property {string} source Original template code.
  * @property {boolean} comment Whether the placeholder is wrapped in `<!-- -->`.
+ * @property {number} indent Leading whitespace of the source line the code
+ *   starts on; continuation lines of expressions move with the new indent.
  *
  * @typedef {object} Segment Code the preprocessor replaced or inserted.
  * @property {number} htmlStart
@@ -41,6 +47,12 @@
  *
  * @typedef {{ line: number, column: number }} Position 1-based line and column.
  */
+
+/**
+ * ViewHelpers whose content is kept as written. `f:spaceless` often builds
+ * strings (e.g. class lists) where added line breaks would change the output.
+ */
+export const DEFAULT_VERBATIM_VIEWHELPERS = Object.freeze(["f:spaceless"]);
 
 /** Tags from typo3/fluid and TYPO3 core that structure a template. */
 export const DEFAULT_BLOCK_VIEWHELPERS = Object.freeze([
@@ -356,6 +368,8 @@ function isBalancedHtml(text) {
 class Preprocessor {
   /** @type {string} */ #source;
   /** @type {(name: string) => boolean} */ #isBlockViewHelper;
+  /** @type {(name: string) => boolean} */ #isVerbatimViewHelper;
+  /** @type {number} */ #printWidth;
   #nonce;
   #displayHint;
   #ignoreHint;
@@ -376,8 +390,21 @@ class Preprocessor {
    * @param {string} source
    * @param {PreprocessOptions} options
    */
-  constructor(source, { blockViewHelpers = [], inlineViewHelpers = [] } = {}) {
+  constructor(
+    source,
+    {
+      blockViewHelpers = [],
+      inlineViewHelpers = [],
+      verbatimViewHelpers = [],
+      printWidth = 80,
+    } = {},
+  ) {
     this.#source = source;
+    this.#printWidth = printWidth;
+    this.#isVerbatimViewHelper = createNameMatcher([
+      ...DEFAULT_VERBATIM_VIEWHELPERS,
+      ...verbatimViewHelpers,
+    ]);
     const isBlock = createNameMatcher([
       ...DEFAULT_BLOCK_VIEWHELPERS,
       ...blockViewHelpers,
@@ -461,12 +488,20 @@ class Preprocessor {
       this.#emit(existing, end);
       return true;
     }
-    const id = this.#fragments.push({ source: code, comment }) - 1;
+    const lineStart = this.#source.lastIndexOf("\n", this.#pos - 1) + 1;
+    const indent = /^[ \t]*/.exec(this.#source.slice(lineStart, this.#pos))?.[0]
+      .length;
+    const id =
+      this.#fragments.push({ source: code, comment, indent: indent ?? 0 }) - 1;
     const core = `${this.#nonce}${id}`;
     // Pad to the code's width so Prettier's line fitting stays realistic.
+    // Multi-line code must not share a line with other attributes, so it is
+    // made wider than the print width.
     const width = comment
       ? 0
-      : Math.max(...code.split("\n").map((line) => line.length));
+      : code.includes("\n")
+        ? this.#printWidth + 1
+        : code.length;
     const padding = "_".repeat(
       Math.max(0, width - core.length - this.#nonce.length),
     );
@@ -530,6 +565,16 @@ class Preprocessor {
     const viewHelper = this.#matchAt(TOKEN.viewHelperTag);
     if (viewHelper) {
       const [tag, slash, namespace, name] = viewHelper;
+      if (!slash && this.#isVerbatimViewHelper(`${namespace}:${name}`)) {
+        const element = findViewHelperElement(
+          this.#source,
+          this.#pos,
+          `${namespace}:${name}`,
+        );
+        if (element) {
+          return this.#replace(element.end, true);
+        }
+      }
       if (!slash && this.#pos >= this.#checkedUntil) {
         const element = findViewHelperElement(
           this.#source,
@@ -613,11 +658,12 @@ export function restore(formatted, state) {
     restoreTagNames(formatted.replace(hint, ""), nonce),
     state,
   );
-  const result = text.replace(placeholder, (match, open, id, close) => {
+  const result = text.replace(placeholder, (match, open, id, close, offset) => {
     const fragment = fragments[Number(id)];
     if (!fragment.comment) {
       restored.add(Number(id));
-      return `${open ?? ""}${fragment.source}${close ?? ""}`;
+      const source = reindent(fragment, lineIndent(text, offset));
+      return `${open ?? ""}${source}${close ?? ""}`;
     }
     if (open && close) {
       restored.add(Number(id));
@@ -635,6 +681,71 @@ export function restore(formatted, state) {
     );
   }
   return result;
+}
+
+/**
+ * Leading whitespace of the line containing `offset`.
+ *
+ * @param {string} text
+ * @param {number} offset
+ */
+function lineIndent(text, offset) {
+  const lineStart = text.lastIndexOf("\n", offset - 1) + 1;
+  return /^[ \t]*/.exec(text.slice(lineStart, offset))?.[0] ?? "";
+}
+
+/**
+ * For each line of a Fluid expression: whether it starts inside a quoted
+ * string.
+ *
+ * @param {string} source
+ */
+function linesStartingInString(source) {
+  const result = [false];
+  /** @type {string | undefined} */
+  let quote;
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i];
+    if (char === "\\") {
+      i++;
+    } else if (char === "\n") {
+      result.push(quote !== undefined);
+    } else if (quote === undefined && (char === '"' || char === "'")) {
+      quote = char;
+    } else if (char === quote) {
+      quote = undefined;
+    }
+  }
+  return result;
+}
+
+/**
+ * Moves the continuation lines of a multi-line expression by the change in
+ * indentation of its first line, keeping their relative layout.
+ *
+ * @param {Fragment} fragment
+ * @param {string} newIndent
+ */
+function reindent({ source, indent }, newIndent) {
+  const delta = newIndent.length - indent;
+  if (delta === 0 || !source.includes("\n")) {
+    return source;
+  }
+  const [first, ...rest] = source.split("\n");
+  const unit = newIndent.includes("\t") ? "\t" : " ";
+  const inString = linesStartingInString(source);
+  const moved = rest.map((line, index) => {
+    // Whitespace inside a string literal is output; leave those lines alone.
+    if (line.trim() === "" || inString[index + 1]) {
+      return line;
+    }
+    if (delta > 0) {
+      return unit.repeat(delta) + line;
+    }
+    const removable = /^[ \t]*/.exec(line)?.[0].length ?? 0;
+    return line.slice(Math.min(-delta, removable));
+  });
+  return [first, ...moved].join("\n");
 }
 
 /**
@@ -754,3 +865,44 @@ export const revealPlaceholders = (text, { nonce, fragments }) =>
     new RegExp(`${nonce}(\\d+)_*${nonce}`, "g"),
     (match, id) => fragments[Number(id)]?.source ?? match,
   );
+
+/**
+ * Finds a root tag that only declares the Fluid namespaces, i.e. `<fluid …>`
+ * or any tag with `data-namespace-typo3-fluid="true"`, wrapping the template.
+ * Comments before it (e.g. `<!-- @format -->`) are allowed.
+ *
+ * @param {string} text
+ * @returns {{ prefix: string, name: string, openStart: number, openEnd: number, closeStart: number } | undefined}
+ */
+export function findRootElement(text) {
+  const open = /^((?:\s*<!--[\s\S]*?-->)*)\s*<([a-zA-Z][\w-]*)(?=[\s/>])/.exec(
+    text,
+  );
+  if (!open) {
+    return undefined;
+  }
+  const [match, prefix, name] = open;
+  const openStart = match.length - name.length - 1;
+  const openEnd = findTagEnd(text, openStart);
+  if (openEnd === -1 || text[openEnd - 2] === "/") {
+    return undefined;
+  }
+  const tag = text.slice(openStart, openEnd);
+  if (
+    name.toLowerCase() !== "fluid" &&
+    !/\sdata-namespace-typo3-fluid\s*=\s*["']?true/i.test(tag)
+  ) {
+    return undefined;
+  }
+  const close = new RegExp(`</${name}\\s*>\\s*$`, "i").exec(text);
+  if (!close || close.index < openEnd) {
+    return undefined;
+  }
+  return {
+    prefix: prefix.trim(),
+    name,
+    openStart,
+    openEnd,
+    closeStart: close.index,
+  };
+}

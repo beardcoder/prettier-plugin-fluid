@@ -3,6 +3,7 @@
 /** @import { Position, RestoreState } from "./preprocess.js" */
 import * as prettier from "prettier";
 import {
+  findRootElement,
   preprocess,
   restore,
   revealPlaceholders,
@@ -16,6 +17,9 @@ const { hardline, join } = prettier.doc.builders;
  * @typedef {Options & {
  *   fluidBlockViewHelpers?: string[],
  *   fluidInlineViewHelpers?: string[],
+ *   fluidVerbatimViewHelpers?: string[],
+ *   fluidIndentRoot?: boolean,
+ *   fluidRootAttributePerLine?: boolean,
  * }} FluidOptions
  */
 
@@ -117,7 +121,101 @@ export const options = {
     description:
       "ViewHelpers formatted inline even if they are block elements by default.",
   },
+  fluidVerbatimViewHelpers: {
+    category: "Fluid",
+    type: "string",
+    array: true,
+    default: [{ value: [] }],
+    description:
+      "Additional ViewHelpers whose element is kept exactly as written, like f:comment. f:spaceless always is. Supports * wildcards.",
+  },
+  fluidIndentRoot: {
+    category: "Fluid",
+    type: "boolean",
+    default: true,
+    description:
+      'Indent the content of the root tag that declares the Fluid namespaces (<fluid> or a tag with data-namespace-typo3-fluid="true").',
+  },
+  fluidRootAttributePerLine: {
+    category: "Fluid",
+    type: "boolean",
+    default: false,
+    description:
+      "Put every attribute of the root tag on its own line. Only with fluidIndentRoot: false.",
+  },
 };
+
+/**
+ * Formats a template and returns the result with Fluid code restored.
+ *
+ * @param {string} text
+ * @param {FluidOptions} options
+ */
+async function formatTemplate(text, options) {
+  const { html, state } = preprocess(text, {
+    blockViewHelpers: options.fluidBlockViewHelpers,
+    inlineViewHelpers: options.fluidInlineViewHelpers,
+    verbatimViewHelpers: options.fluidVerbatimViewHelpers,
+    printWidth: options.printWidth,
+  });
+  const plugins = options.plugins ?? [];
+  const forwarded = Object.fromEntries(
+    (await getForwardedOptionNames(plugins))
+      .filter((name) => name in options)
+      .map((name) => [
+        name,
+        /** @type {Record<string, unknown>} */ (options)[name],
+      ]),
+  );
+
+  let formatted;
+  try {
+    // Uses the `html` parser as resolved by Prettier, so plugins wrapping it
+    // (organize-attributes, tailwindcss, ...) take part as usual.
+    formatted = await prettier.format(html, {
+      ...forwarded,
+      plugins,
+      parser: "html",
+      endOfLine: "lf",
+    });
+  } catch (error) {
+    throw toFluidError(error, { html, source: text, state });
+  }
+  return restore(formatted, state);
+}
+
+/**
+ * With `fluidIndentRoot: false`: formats the root tag and its content
+ * separately, so the content is not indented, with an empty line after the
+ * opening and before the closing tag.
+ *
+ * @param {string} text
+ * @param {NonNullable<ReturnType<typeof findRootElement>>} root
+ * @param {FluidOptions} options
+ */
+async function formatWithFlatRoot(text, root, options) {
+  const closeTag = `</${root.name}>`;
+  const openTag = text.slice(root.openStart, root.openEnd);
+  const tagOptions = options.fluidRootAttributePerLine
+    ? { ...options, printWidth: 1 }
+    : options;
+  const opening = (await formatTemplate(`${openTag}${closeTag}`, tagOptions))
+    .trim()
+    .slice(0, -closeTag.length)
+    .trimEnd();
+
+  // Leading line breaks keep the line numbers of parse errors correct.
+  const linesBefore = text.slice(0, root.openEnd).split("\n").length - 1;
+  const content = text.slice(root.openEnd, root.closeStart);
+  const children = (
+    await formatTemplate("\n".repeat(linesBefore) + content, options)
+  ).trim();
+
+  const body = children
+    ? `${opening}\n\n${children}\n\n${closeTag}\n`
+    : `${opening}\n${closeTag}\n`;
+  return root.prefix ? `${root.prefix}\n${body}` : body;
+}
 
 /** @type {Plugin<FluidRoot>["parsers"]} */
 export const parsers = {
@@ -132,34 +230,12 @@ export const parsers = {
      * @param {FluidOptions} options
      */
     async parse(text, options) {
-      const { html, state } = preprocess(text, {
-        blockViewHelpers: options.fluidBlockViewHelpers,
-        inlineViewHelpers: options.fluidInlineViewHelpers,
-      });
-      const plugins = options.plugins ?? [];
-      const forwarded = Object.fromEntries(
-        (await getForwardedOptionNames(plugins))
-          .filter((name) => name in options)
-          .map((name) => [
-            name,
-            /** @type {Record<string, unknown>} */ (options)[name],
-          ]),
-      );
-
-      let formatted;
-      try {
-        // Uses the `html` parser as resolved by Prettier, so plugins wrapping
-        // it (organize-attributes, tailwindcss, ...) take part as usual.
-        formatted = await prettier.format(html, {
-          ...forwarded,
-          plugins,
-          parser: "html",
-          endOfLine: "lf",
-        });
-      } catch (error) {
-        throw toFluidError(error, { html, source: text, state });
-      }
-      return { type: "root", text, formatted: restore(formatted, state) };
+      const root =
+        options.fluidIndentRoot === false ? findRootElement(text) : undefined;
+      const formatted = root
+        ? await formatWithFlatRoot(text, root, options)
+        : await formatTemplate(text, options);
+      return { type: "root", text, formatted };
     },
     hasPragma: (text) => PRAGMA.test(text),
     locStart: () => 0,

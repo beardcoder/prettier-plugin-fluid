@@ -7,6 +7,16 @@ breaking change is published automatically. Entries are generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by
 [conventional-changelog](https://github.com/conventional-changelog/conventional-changelog).
 
+## [0.3.0](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.2.0...v0.3.0) (2026-09-28)
+
+### Features
+
+- add fluidIndentRoot, fluidVerbatimViewHelpers and reflow multi-line attributes ([94d5c42](https://github.com/beardcoder/prettier-plugin-fluid/commit/94d5c42eafd2d6c6d78667dcbfd5df9becc43c9a))
+
+### Bug Fixes
+
+- keep the quotes of attribute values whose Fluid code contains quotes ([175171e](https://github.com/beardcoder/prettier-plugin-fluid/commit/175171e65fca331a7b88654338113e3739cb21fe))
+
 ## [0.2.0](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.1.0...v0.2.0) (2026-09-28)
 
 ### Features

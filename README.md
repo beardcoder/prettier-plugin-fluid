@@ -16,9 +16,12 @@
   `f:section`, …) are laid out as blocks. Inline ones (`f:link.*`,
   `f:translate`, …) behave like `<a>`. Custom ViewHelpers
   [are configurable](#custom-viewhelpers).
+- **Formats inline assets.** The content of `<f:asset.css>` and
+  `<f:asset.script>` is formatted as CSS and JavaScript, just like `<style>`
+  and `<script>`.
 - **Safe by design.** Some parts are kept verbatim: `<f:comment>` content,
   CDATA sections, conditional wrappers like
-  `<f:if …><div></f:if>`, and `<script>`/`<style>` blocks that contain Fluid
+  `<f:if …><div></f:if>`, and `<script>`/`<style>`/`<f:asset.*>` blocks that contain Fluid
   code. If formatting would ever drop Fluid code, the plugin fails instead of
   writing the file.
 - **Helpful errors.** When a template is invalid HTML, the error points at the

@@ -44,6 +44,14 @@
  * @property {string[]} hints Comments inserted to steer Prettier.
  * @property {Fragment[]} fragments
  * @property {Segment[]} segments Sorted by position.
+ * @property {RawTextTags} rawTextTags `<f:asset.css>`/`<f:asset.script>`
+ *   tags temporarily turned into `<style>`/`<script>`.
+ *
+ * @typedef {object} RawTextTags
+ * @property {number} count All `<style>`/`<script>` tags (opening and
+ *   closing) in the preprocessed HTML.
+ * @property {Map<number, string>} assets Original tag name by the ordinal of
+ *   the renamed tags among them.
  *
  * @typedef {{ line: number, column: number }} Position 1-based line and column.
  */
@@ -258,6 +266,12 @@ const VOID_ELEMENTS = new Set([
   "wbr",
 ]);
 const RAW_TEXT_ELEMENTS = new Set(["script", "style", "textarea"]);
+/** Asset ViewHelpers whose inline content is CSS or JavaScript. */
+const ASSET_ELEMENTS = new Map([
+  ["f:asset.css", "style"],
+  ["f:asset.script", "script"],
+]);
+const RAW_TEXT_TAG = /<(\/?)(?:style|script)(?=[\s/>])/gi;
 // Tag names may contain Fluid expressions: <h{level}>.
 const ANY_TAG = /<(\/?)([a-zA-Z][^\s/>]*)/y;
 
@@ -351,7 +365,11 @@ function isBalancedHtml(text) {
         return false;
       }
     } else if (text[tagEnd - 2] !== "/" && !VOID_ELEMENTS.has(name)) {
-      if (RAW_TEXT_ELEMENTS.has(name) || name === "f:comment") {
+      if (
+        RAW_TEXT_ELEMENTS.has(name) ||
+        ASSET_ELEMENTS.has(name) ||
+        name === "f:comment"
+      ) {
         // Skip content that is no markup.
         const close = text.indexOf(`</${rawName}`, i);
         if (close === -1) {
@@ -385,6 +403,10 @@ class Preprocessor {
   /** @type {{ start: number, end: number } | undefined} */ #rawTextBody;
   /** End of a ViewHelper element whose content is known to be well-nested. */
   #checkedUntil = 0;
+  /** Closing asset tags to rename, by source position. */
+  /** @type {Map<number, string>} */ #assetCloses = new Map();
+  /** HTML offsets of renamed asset tags and their original names. */
+  /** @type {Map<number, string>} */ #assetTags = new Map();
 
   /**
    * @param {string} source
@@ -446,8 +468,17 @@ class Preprocessor {
       hints: [this.#displayHint, this.#ignoreHint],
       fragments: this.#fragments,
       segments: this.#segments,
+      rawTextTags: { count: 0, assets: new Map() },
     };
-    return { html: this.#output.join(""), state };
+    const html = this.#output.join("");
+    for (const match of html.matchAll(RAW_TEXT_TAG)) {
+      const name = this.#assetTags.get(match.index);
+      if (name) {
+        state.rawTextTags.assets.set(state.rawTextTags.count, name);
+      }
+      state.rawTextTags.count++;
+    }
+    return { html, state };
   }
 
   /** @param {number} until */
@@ -565,6 +596,9 @@ class Preprocessor {
     const viewHelper = this.#matchAt(TOKEN.viewHelperTag);
     if (viewHelper) {
       const [tag, slash, namespace, name] = viewHelper;
+      if (this.#asset(tag, slash, `${namespace}:${name}`)) {
+        return true;
+      }
       if (!slash && this.#isVerbatimViewHelper(`${namespace}:${name}`)) {
         const element = findViewHelperElement(
           this.#source,
@@ -625,6 +659,49 @@ class Preprocessor {
     return false;
   }
 
+  /**
+   * Turns `<f:asset.css>`/`<f:asset.script>` with inline content into
+   * `<style>`/`<script>`, so Prettier formats the content as CSS/JavaScript.
+   *
+   * @param {string} tag The matched `<ns:name` or `</ns:name`.
+   * @param {string} slash
+   * @param {string} name
+   */
+  #asset(tag, slash, name) {
+    const end = this.#pos + tag.length;
+    if (slash) {
+      const htmlName = this.#assetCloses.get(this.#pos);
+      if (!htmlName) {
+        return false;
+      }
+      this.#emit(`</${htmlName}`, end);
+      this.#assetTags.set(
+        /** @type {Segment} */ (this.#segments.at(-1)).htmlStart,
+        `/${name}`,
+      );
+      return true;
+    }
+    const htmlName = ASSET_ELEMENTS.get(name);
+    const element =
+      htmlName && findViewHelperElement(this.#source, this.#pos, name);
+    if (!htmlName || !element) {
+      return false;
+    }
+    const body = this.#source.slice(element.bodyStart, element.bodyEnd);
+    if (containsFluid(body) || body.includes("<![CDATA[")) {
+      // Not valid CSS/JavaScript; keep it exactly as written.
+      return this.#replace(element.end, true);
+    }
+    this.#emit(`<${htmlName}`, end);
+    this.#assetTags.set(
+      /** @type {Segment} */ (this.#segments.at(-1)).htmlStart,
+      name,
+    );
+    this.#assetCloses.set(element.bodyEnd, htmlName);
+    this.#rawTextBody = { start: element.bodyStart, end: element.bodyEnd };
+    return true;
+  }
+
   /** `<!-- prettier-ignore -->` / `<!-- display: x -->` must stay adjacent to their tag. */
   #followsDirective() {
     const before = this.#source.slice(Math.max(0, this.#pos - 500), this.#pos);
@@ -655,7 +732,10 @@ export function restore(formatted, state) {
   const restored = new Set();
 
   const text = fixAttributeQuotes(
-    restoreTagNames(formatted.replace(hint, ""), nonce),
+    restoreAssetTags(
+      restoreTagNames(formatted.replace(hint, ""), nonce),
+      state.rawTextTags,
+    ),
     state,
   );
   const result = text.replace(placeholder, (match, open, id, close, offset) => {
@@ -905,4 +985,29 @@ export function findRootElement(text) {
     openEnd,
     closeStart: close.index,
   };
+}
+
+/**
+ * Turns the `<style>`/`<script>` tags that were `<f:asset.css>`/
+ * `<f:asset.script>` back. Prettier keeps the order of elements, so the tags
+ * are identified by their position among all `<style>`/`<script>` tags.
+ *
+ * @param {string} text
+ * @param {RawTextTags} rawTextTags
+ */
+function restoreAssetTags(text, { count, assets }) {
+  if (assets.size === 0) {
+    return text;
+  }
+  let ordinal = 0;
+  const result = text.replace(RAW_TEXT_TAG, (match) => {
+    const name = assets.get(ordinal++);
+    return name ? `<${name}` : match;
+  });
+  if (ordinal !== count) {
+    throw new Error(
+      "prettier-plugin-fluid: formatting changed the number of <style>/<script> tags, refusing to continue.",
+    );
+  }
+  return result;
 }

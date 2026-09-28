@@ -255,6 +255,47 @@ describe("fluidIndentRoot: false", () => {
   });
 });
 
+describe("f:asset.css / f:asset.script", () => {
+  test("inline content is formatted as CSS and JavaScript", async () => {
+    await assertFormat(
+      `<div><f:asset.css identifier="a">.a  >  .b { margin: 0 ; }</f:asset.css><f:asset.script identifier="b">foo( 1 )</f:asset.script></div>`,
+      `<div>
+  <f:asset.css identifier="a">
+    .a > .b {
+      margin: 0;
+    }
+  </f:asset.css>
+  <f:asset.script identifier="b">
+    foo(1);
+  </f:asset.script>
+</div>
+`,
+    );
+  });
+
+  test("real <style>/<script> tags around them stay what they are", async () => {
+    const output = await format(
+      `<style>.x { margin: 0; }</style><f:asset.css identifier="a">.a { margin: 0; }</f:asset.css><script>foo( 1 )</script>`,
+    );
+    assert.match(output, /^<style>\n {2}\.x \{/);
+    assert.match(
+      output,
+      /<f:asset\.css identifier="a">\n {2}\.a \{\n {4}margin: 0;\n {2}\}\n<\/f:asset\.css>/,
+    );
+    assert.match(output, /<script>\n {2}foo\(1\);\n<\/script>\n$/);
+  });
+
+  test("content with Fluid syntax or CDATA is kept as written", async () => {
+    const source = `<div>
+  <f:asset.css identifier="a">.a { color: {settings.color}; }</f:asset.css>
+  <f:asset.script identifier="b"><![CDATA[ foo( 1 ) ]]></f:asset.script>
+  <f:asset.css identifier="c" href="EXT:site/Resources/Public/c.css" />
+</div>
+`;
+    await assertFormat(source, source);
+  });
+});
+
 describe("fluidFinalNewline", () => {
   test("true (default) ends the file with a line break", async () => {
     await assertFormat(`<p>{a}</p>`, `<p>{a}</p>\n`);

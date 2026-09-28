@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { describe, test } from "node:test";
+import { stripVTControlCharacters } from "node:util";
 import * as prettier from "prettier";
 import fluid from "../src/index.js";
 import { preprocess, restore } from "../src/preprocess.js";
@@ -221,12 +222,14 @@ describe("robustness", () => {
   test("parse errors point at the Fluid source", async () => {
     const source = `<div>\n  {some.long -> f:format.raw()}\n  <f:if condition="{a}"><section></f:if>\n</div>`;
     await assert.rejects(format(source), (error) => {
+      // The code frame is syntax-highlighted when running in a color terminal.
+      const message = stripVTControlCharacters(error.message);
       assert.deepEqual(error.loc.start, { line: 3, column: 34 });
-      assert.match(error.message, /^Unexpected closing tag "f:if"/);
-      assert.match(error.message, /Fluid templates must be well-nested HTML/);
+      assert.match(message, /^Unexpected closing tag "f:if"/);
+      assert.match(message, /Fluid templates must be well-nested HTML/);
       // code frame shows the original template, not placeholders
       assert.match(
-        error.message,
+        message,
         /> 3 \|   <f:if condition="\{a\}"><section><\/f:if>/,
       );
       return true;

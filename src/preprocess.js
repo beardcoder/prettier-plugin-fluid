@@ -25,6 +25,10 @@
  *   whose element is kept exactly as written, like `<f:comment>`.
  * @property {number} [printWidth] Multi-line expressions get placeholders wider
  *   than this, so a tag containing one always breaks its attributes.
+ * @property {ArraySpacing} [arraySpacing] Spaces inside the braces of
+ *   single-line Fluid arrays (`{ a: 1, b: 2 }` or `{a: 1, b: 2}`).
+ *
+ * @typedef {"preserve" | "always" | "never"} ArraySpacing
  *
  * @typedef {object} Fragment
  * @property {string} source Original template code.
@@ -230,6 +234,134 @@ export function matchShorthand(text, index) {
   return -1;
 }
 
+// Array syntax as in Patterns::$SCAN_PATTERN_SHORTHANDSYNTAX_ARRAYS of
+// typo3/fluid: `key: value` or `key = value`, separated by optional commas.
+const ARRAY_KEY =
+  /([a-zA-Z0-9\-_]+|"(?:\\.|[^"\\])+"|'(?:\\.|[^'\\])+')(\s*[:=]\s*)/y;
+const ARRAY_IDENTIFIER = /[a-zA-Z0-9\-_.]+/y;
+const WHITESPACE = /\s*/y;
+
+/**
+ * @param {RegExp} regex A sticky regex.
+ * @param {string} text
+ * @param {number} index
+ */
+function matchSticky(regex, text, index) {
+  regex.lastIndex = index;
+  return regex.exec(text);
+}
+
+/**
+ * Rewrites a single-line Fluid array (`{a: 1,b: 2}`) with one space after each
+ * comma and the given spacing inside the braces. Keys, delimiters and values
+ * stay as written.
+ *
+ * `{fh:baum}` also matches Fluid's array syntax, but reads like a namespaced
+ * name (and `{"w":"1"}` like JSON); a single entry without whitespace around
+ * its delimiter is therefore never treated as an array at the top level.
+ *
+ * @param {string} code An expression from `{` to `}`.
+ * @param {"always" | "never"} spacing
+ * @param {boolean} nested Whether `code` is the value of an array entry.
+ * @returns {string | undefined} Undefined if `code` is no single-line array.
+ */
+function formatArray(code, spacing, nested) {
+  const end = code.length - 1;
+  /** @type {string[]} */
+  const entries = [];
+  let ambiguous = false;
+  let i = 1;
+  while (true) {
+    const space = /** @type {RegExpExecArray} */ (
+      matchSticky(WHITESPACE, code, i)
+    )[0];
+    if (space.includes("\n")) {
+      return undefined;
+    }
+    i += space.length;
+    if (i === end) {
+      break;
+    }
+    const key = matchSticky(ARRAY_KEY, code, i);
+    if (!key || key[2].includes("\n")) {
+      return undefined;
+    }
+    const valueStart = i + key[0].length;
+    /** @type {string | undefined} */
+    let value;
+    let valueEnd;
+    const char = code[valueStart];
+    if (char === '"' || char === "'") {
+      valueEnd = skipQuoted(code, valueStart);
+      value = code.slice(valueStart, valueEnd);
+    } else if (char === "{") {
+      valueEnd = matchShorthand(code, valueStart);
+      value =
+        valueEnd === -1
+          ? undefined
+          : formatArray(code.slice(valueStart, valueEnd), spacing, true);
+    } else {
+      value = matchSticky(ARRAY_IDENTIFIER, code, valueStart)?.[0];
+      valueEnd = valueStart + (value?.length ?? 0);
+    }
+    ambiguous = /^[:=]$/.test(key[2]);
+    if (value === undefined || valueEnd === -1 || valueEnd > end) {
+      return undefined;
+    }
+    entries.push(`${key[0]}${value}`);
+    i = valueEnd;
+    const separator = /** @type {RegExpExecArray} */ (
+      matchSticky(/\s*,?/y, code, i)
+    )[0];
+    if (separator.includes("\n")) {
+      return undefined;
+    }
+    i += separator.length;
+  }
+  if (entries.length === 0 || (entries.length === 1 && ambiguous && !nested)) {
+    return undefined;
+  }
+  const pad = spacing === "always" ? " " : "";
+  return `{${pad}${entries.join(", ")}${pad}}`;
+}
+
+/**
+ * Applies `formatArray()` to every array in an expression, including arrays
+ * nested in ViewHelper arguments. Quoted strings are left alone.
+ *
+ * @param {string} code
+ * @param {"always" | "never"} spacing
+ */
+export function formatArrays(code, spacing) {
+  let result = "";
+  let copied = 0;
+  for (let i = 0; i < code.length; i++) {
+    const char = code[i];
+    if (char === "\\") {
+      i++;
+    } else if (char === '"' || char === "'") {
+      const end = skipQuoted(code, i);
+      if (end === -1) {
+        break;
+      }
+      i = end - 1;
+    } else if (char === "{") {
+      const end = matchShorthand(code, i);
+      if (end === -1) {
+        continue;
+      }
+      const inner = code.slice(i, end);
+      const formatted =
+        formatArray(inner, spacing, false) ??
+        `{${formatArrays(inner.slice(1, -1), spacing)}}`;
+      result += code.slice(copied, i) + formatted;
+      copied = end;
+      i = end - 1;
+    }
+  }
+  return result + code.slice(copied);
+}
+
 /**
  * @param {string} text
  * @param {number} index Position of the `<`.
@@ -388,6 +520,7 @@ class Preprocessor {
   /** @type {(name: string) => boolean} */ #isBlockViewHelper;
   /** @type {(name: string) => boolean} */ #isVerbatimViewHelper;
   /** @type {number} */ #printWidth;
+  /** @type {ArraySpacing} */ #arraySpacing;
   #nonce;
   #displayHint;
   #ignoreHint;
@@ -421,10 +554,12 @@ class Preprocessor {
       inlineViewHelpers = [],
       verbatimViewHelpers = [],
       printWidth = 80,
+      arraySpacing = "preserve",
     } = {},
   ) {
     this.#source = source;
     this.#printWidth = printWidth;
+    this.#arraySpacing = arraySpacing;
     this.#isVerbatimViewHelper = createNameMatcher([
       ...DEFAULT_VERBATIM_VIEWHELPERS,
       ...verbatimViewHelpers,
@@ -519,14 +654,17 @@ class Preprocessor {
   /**
    * @param {number} end
    * @param {boolean} comment
+   * @param {(code: string) => string} [transform] Formats the code; the
+   *   placeholder gets the width of the result.
    */
-  #replace(end, comment) {
-    const code = this.#source.slice(this.#pos, end);
-    const existing = comment ? undefined : this.#placeholders.get(code);
+  #replace(end, comment, transform) {
+    const original = this.#source.slice(this.#pos, end);
+    const existing = comment ? undefined : this.#placeholders.get(original);
     if (existing) {
       this.#emit(existing, end);
       return true;
     }
+    const code = transform ? transform(original) : original;
     const lineStart = this.#source.lastIndexOf("\n", this.#pos - 1) + 1;
     const indent = /^[ \t]*/.exec(this.#source.slice(lineStart, this.#pos))?.[0]
       .length;
@@ -546,7 +684,7 @@ class Preprocessor {
     );
     const placeholder = `${core}${padding}${this.#nonce}`;
     if (!comment) {
-      this.#placeholders.set(code, placeholder);
+      this.#placeholders.set(original, placeholder);
     }
 
     this.#emit(comment ? `<!--${placeholder}-->` : placeholder, end);
@@ -574,7 +712,17 @@ class Preprocessor {
 
   #shorthand() {
     const end = matchShorthand(this.#source, this.#pos);
-    return end !== -1 && this.#replace(end, false);
+    const spacing = this.#arraySpacing;
+    return (
+      end !== -1 &&
+      this.#replace(
+        end,
+        false,
+        spacing === "preserve"
+          ? undefined
+          : (code) => formatArrays(code, spacing),
+      )
+    );
   }
 
   #fluidComment() {

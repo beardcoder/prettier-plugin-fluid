@@ -7,6 +7,12 @@ breaking change is published automatically. Entries are generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by
 [conventional-changelog](https://github.com/conventional-changelog/conventional-changelog).
 
+## [0.5.0](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.4.0...v0.5.0) (2026-09-28)
+
+### Features
+
+- format the content of f:asset.css and f:asset.script as CSS and JavaScript ([7c9e242](https://github.com/beardcoder/prettier-plugin-fluid/commit/7c9e242725ee5c21fe2b2e13191ff889219a6789))
+
 ## [0.4.0](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.3.0...v0.4.0) (2026-09-28)
 
 ### Features

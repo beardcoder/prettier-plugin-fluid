@@ -25,10 +25,12 @@
 ## Installation
 
 ```sh
+bun add -d prettier @beardcoder/prettier-plugin-fluid
+# or
 npm install --save-dev prettier @beardcoder/prettier-plugin-fluid
 ```
 
-Requires Prettier 3 and Node.js 20 or later.
+Requires Prettier 3 and Node.js 20 or later, or Bun.
 
 Fluid templates are usually plain `.html` files, so assign the `fluid` parser
 to them in your Prettier config (`.prettierrc.json`):
@@ -48,7 +50,7 @@ to them in your Prettier config (`.prettierrc.json`):
 Files ending in `.fluid` or `.fluid.html` are detected automatically.
 
 ```sh
-npx prettier --write "**/Resources/Private/**/*.html"
+bunx prettier --write "**/Resources/Private/**/*.html"
 ```
 
 ## Sorting attributes
@@ -169,24 +171,33 @@ The plugin also supports `requirePragma` and `insertPragma`
 
 ## Development
 
+The project uses [Bun](https://bun.sh) for development:
+
 ```sh
-npm install
-npm run check                        # types (tsc on JSDoc), formatting, tests
-UPDATE=1 npm test                    # regenerate test/fixtures/*.output.html
-npm run corpus -- path/to/templates  # lossless + idempotency check on real templates
+bun install
+bun run check                     # types (tsc on JSDoc), formatting, tests
+UPDATE=1 bun test                 # regenerate test/fixtures/*.output.html
+bun run test:node                 # same tests on Node.js
+bun run corpus path/to/templates  # lossless + idempotency check on real templates
 ```
 
-`npm run corpus` formats every `.html` file below the given directories. It
-verifies that no Fluid expression, ViewHelper tag or content character is lost
-and that a second formatting pass changes nothing.
+The plugin itself is plain ESM without Bun-specific APIs, since Prettier
+usually runs on Node.js. The tests use `node:test` so they run on both
+runtimes, and CI covers Node 20, 22 and 24.
+
+`bun run corpus` formats every `.html` file below the given directories. It
+fails if a Fluid expression or ViewHelper tag is lost, or if a second
+formatting pass changes anything. It also lists templates that are not
+well-nested HTML, and templates where Prettier normalized content.
 
 ### Releasing
 
-1. Update `CHANGELOG.md` and bump the version: `npm version <patch|minor|major>`.
+1. Update `CHANGELOG.md` and bump the version: `bun pm version <patch|minor|major>`.
 2. Push the commit and tag: `git push --follow-tags`.
 3. Publish a GitHub release for the tag. The
-   [release workflow](.github/workflows/release.yml) publishes to npm with
-   provenance.
+   [release workflow](.github/workflows/release.yml) runs all checks and
+   publishes to npm with `bun publish`. It needs the `NPM_TOKEN` secret: a
+   granular npm token with "bypass 2FA".
 
 ## License
 

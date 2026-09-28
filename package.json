@@ -31,12 +31,13 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "check": "npm run typecheck && npm run format:check && npm test",
-    "corpus": "node scripts/check-corpus.js",
+    "check": "bun run typecheck && bun run format:check && bun test",
+    "corpus": "bun scripts/check-corpus.js",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepublishOnly": "npm run check",
-    "test": "node --test test/format.test.js",
+    "prepublishOnly": "bun run check",
+    "test": "bun test",
+    "test:node": "node --test test/format.test.js",
     "typecheck": "tsc"
   },
   "devDependencies": {
@@ -52,7 +53,7 @@
     "node": ">=20"
   },
   "publishConfig": {
-    "access": "public",
-    "provenance": true
-  }
+    "access": "public"
+  },
+  "packageManager": "bun@1.4.2"
 }

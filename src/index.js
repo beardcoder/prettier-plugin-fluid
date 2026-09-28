@@ -100,7 +100,9 @@ export const languages = [
     name: "Fluid",
     parsers: ["fluid"],
     extensions: [".fluid", ".fluid.html"],
-    vscodeLanguageIds: ["fluid", "typo3-fluid"],
+    // "html-fluid" is the language of HTML templates in the Fluid extension
+    // for VS Code; its "fluid" language is plain-text Fluid (e.g. emails).
+    vscodeLanguageIds: ["html-fluid"],
   },
 ];
 

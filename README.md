@@ -45,17 +45,43 @@ to them in your Prettier config (`.prettierrc.json`):
   "plugins": ["@beardcoder/prettier-plugin-fluid"],
   "overrides": [
     {
-      "files": ["**/Resources/Private/{Templates,Partials,Layouts}/**/*.html"],
+      "files": [
+        "**/Resources/Private/**/{Templates,Layouts,Partials,Components,PageView}/**/*.html",
+        "**/ContentBlocks/**/templates/**/*.html"
+      ],
       "options": { "parser": "fluid" }
     }
   ]
 }
 ```
 
-Files ending in `.fluid` or `.fluid.html` are detected automatically.
+These are the same locations the
+[Fluid extension for VS Code](https://github.com/FriendsOfTYPO3/vscode-fluid-language)
+treats as Fluid templates. Files ending in `.fluid` or `.fluid.html` are
+detected automatically.
 
 ```sh
 bunx prettier --write "**/Resources/Private/**/*.html"
+```
+
+Only HTML templates are supported. Plain-text templates (e.g. `*.fluid.txt`
+for text emails) are not formatted: an HTML formatter would change their line
+breaks.
+
+### VS Code
+
+Install the [Prettier extension](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode)
+and the [Fluid extension](https://marketplace.visualstudio.com/items?itemName=FriendsOfTYPO3.fluid-language).
+The Fluid extension marks HTML templates with the language `html-fluid`, which
+this plugin registers for. Prettier then formats them on save:
+
+```json
+{
+  "[html-fluid]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  }
+}
 ```
 
 ## Sorting attributes

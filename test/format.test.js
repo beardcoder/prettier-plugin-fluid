@@ -167,6 +167,66 @@ describe("shorthand syntax", () => {
   });
 });
 
+describe("fluidArraySpacing", () => {
+  const always = { fluidArraySpacing: "always" };
+  const never = { fluidArraySpacing: "never" };
+
+  test("preserve (default) keeps arrays as written", async () => {
+    const source = `<p>{1:baum,2:haus} { a: 1 }</p>\n`;
+    await assertFormat(source, source);
+  });
+
+  test("always adds spaces inside the braces and after commas", async () => {
+    await assertFormat(
+      `<p>{1:baum,2:haus}</p>`,
+      `<p>{ 1:baum, 2:haus }</p>\n`,
+      always,
+    );
+    await assertFormat(
+      `<f:render partial="Card" arguments="{item: item ,title:'A, B'}" />`,
+      `<f:render partial="Card" arguments="{ item: item, title:'A, B' }" />\n`,
+      always,
+    );
+  });
+
+  test("never removes spaces inside the braces", async () => {
+    await assertFormat(
+      `<p>{ 1:baum, 2:haus }</p>`,
+      `<p>{1:baum, 2:haus}</p>\n`,
+      never,
+    );
+  });
+
+  test("nested arrays, also in ViewHelper arguments", async () => {
+    await assertFormat(
+      `<p>{f:translate(key: 'x', arguments: {0: a,1: {b: c}})}</p>`,
+      `<p>{f:translate(key: 'x', arguments: { 0: a, 1: { b: c } })}</p>\n`,
+      always,
+    );
+  });
+
+  test("never touches code that only looks like an array", async () => {
+    const source = `<p>
+  {fh:baum} {f:format.raw()} {a -> f:format.raw()} {foo ? x : y} {item.title}
+  {a == 'b'} {f:if(condition: a, then: 'x')} {"w":"1"}
+</p>
+`;
+    await assertFormat(source, source, always);
+    await assertFormat(source, source, never);
+  });
+
+  test("strings and multi-line arrays stay as written", async () => {
+    const source = `<f:render
+  partial="Card"
+  arguments="{
+    title: item.title,link: '{a,b}'
+  }"
+/>
+`;
+    await assertFormat(source, source, always);
+  });
+});
+
 describe("f:comment", () => {
   test("content is kept verbatim, even if it is broken HTML", async () => {
     await assertFormat(

@@ -21,6 +21,7 @@ const { hardline, join } = prettier.doc.builders;
  *   fluidIndentRoot?: boolean,
  *   fluidRootAttributePerLine?: boolean,
  *   fluidFinalNewline?: boolean,
+ *   fluidArraySpacing?: import("./preprocess.js").ArraySpacing,
  * }} FluidOptions
  */
 
@@ -153,6 +154,27 @@ export const options = {
     description:
       "End the file with a line break. With false, the last line has none.",
   },
+  fluidArraySpacing: {
+    category: "Fluid",
+    type: "choice",
+    default: "preserve",
+    description:
+      "Spaces inside the braces of single-line Fluid arrays: { a: 1, b: 2 } or {a: 1, b: 2}.",
+    choices: [
+      {
+        value: "preserve",
+        description: "Keep Fluid arrays exactly as written.",
+      },
+      {
+        value: "always",
+        description: "{ a: 1, b: 2 }, with one space after each comma.",
+      },
+      {
+        value: "never",
+        description: "{a: 1, b: 2}, with one space after each comma.",
+      },
+    ],
+  },
 };
 
 /**
@@ -167,6 +189,7 @@ async function formatTemplate(text, options) {
     inlineViewHelpers: options.fluidInlineViewHelpers,
     verbatimViewHelpers: options.fluidVerbatimViewHelpers,
     printWidth: options.printWidth,
+    arraySpacing: options.fluidArraySpacing,
   });
   const plugins = options.plugins ?? [];
   const forwarded = Object.fromEntries(

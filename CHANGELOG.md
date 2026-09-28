@@ -7,6 +7,13 @@ breaking change is published automatically. Entries are generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by
 [conventional-changelog](https://github.com/conventional-changelog/conventional-changelog).
 
+## [0.5.1](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.5.0...v0.5.1) (2026-09-28)
+
+### Bug Fixes
+
+- keep ViewHelper arguments with escaped quotes outside of expressions ([7d7a503](https://github.com/beardcoder/prettier-plugin-fluid/commit/7d7a5032cb12f8851c79c2403f7cfd2c0ca6a387))
+- register for the html-fluid VS Code language instead of fluid ([eef2ae4](https://github.com/beardcoder/prettier-plugin-fluid/commit/eef2ae412f1a32693e4e02beb47c0a48dc7dc0d6))
+
 ## [0.5.0](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.4.0...v0.5.0) (2026-09-28)
 
 ### Features

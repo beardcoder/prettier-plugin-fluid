@@ -190,17 +190,32 @@ fails if a Fluid expression or ViewHelper tag is lost, or if a second
 formatting pass changes anything. It also lists templates that are not
 well-nested HTML, and templates where Prettier normalized content.
 
+### Commit messages
+
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/),
+e.g. `fix(parser): keep f:comment content verbatim`. `bun install` sets up a
+[commitlint](https://commitlint.js.org) Git hook, and CI checks every commit.
+
 ### Releasing
 
-1. Add the new version's section to `CHANGELOG.md` and commit it.
-2. Bump the version, which commits and creates the tag:
-   `bun pm version <patch|minor|major>`.
-3. Push the commit and tag: `git push --follow-tags`.
+Releases are fully automatic (rolling release). After CI passes on `main`, the
+[release workflow](.github/workflows/release.yml) looks at the commits since
+the last version tag:
 
-The [release workflow](.github/workflows/release.yml) runs all checks and
-publishes to npm with `bun publish`. It then creates the GitHub release with
-the matching `CHANGELOG.md` section. It needs the `NPM_TOKEN` secret: a
-granular npm token with "bypass 2FA".
+| Commits                                                 | Release                          |
+| ------------------------------------------------------- | -------------------------------- |
+| `feat`                                                  | minor                            |
+| `fix`, `perf`, `revert`                                 | patch                            |
+| breaking change (`feat!:` or `BREAKING CHANGE:` footer) | major (minor while still on 0.x) |
+| only `docs`, `chore`, `ci`, `test`, `refactor`, …       | none                             |
+
+For a release, the workflow bumps `package.json` and prepends a
+[conventional-changelog](https://github.com/conventional-changelog/conventional-changelog)
+section to `CHANGELOG.md`. It commits both as `chore(release): vX.Y.Z` and
+tags the commit. It then publishes to npm via trusted publishing with
+provenance and creates the GitHub release with the same notes.
+
+Preview the next release locally with `bun run release --dry-run`.
 
 ## License
 

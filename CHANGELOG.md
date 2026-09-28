@@ -1,14 +1,15 @@
 # Changelog
 
-All notable changes to this project are documented here. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
-adheres to [Semantic Versioning](https://semver.org/).
+All notable changes to this project are documented here. The project follows
+[Semantic Versioning](https://semver.org/) and is released continuously:
+every commit on `main` that contains a `feat`, `fix`, `perf`, `revert` or a
+breaking change is published automatically. Entries are generated from
+[Conventional Commits](https://www.conventionalcommits.org/) by
+[conventional-changelog](https://github.com/conventional-changelog/conventional-changelog).
 
-## [Unreleased]
+## [0.1.0](https://github.com/beardcoder/prettier-plugin-fluid/releases/tag/v0.1.0) (2026-09-28)
 
-## [0.1.0] - 2026-09-28
-
-### Added
+### Features
 
 - `fluid` parser for TYPO3 Fluid templates, built on Prettier's `html` parser so
   that plugins such as `prettier-plugin-organize-attributes` and
@@ -22,6 +23,3 @@ adheres to [Semantic Versioning](https://semver.org/).
   Fluid code.
 - Parse errors that report the line and column in the original template.
 - `requirePragma` / `insertPragma` support.
-
-[Unreleased]: https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/beardcoder/prettier-plugin-fluid/releases/tag/v0.1.0

@@ -9,11 +9,34 @@ permissions:
   contents: read
 
 jobs:
+  commitlint:
+    # Releases are derived from commit messages, so they must follow
+    # Conventional Commits.
+    name: Commit messages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - name: Lint commit messages
+        env:
+          FROM: ${{ github.event.pull_request.base.sha || github.event.before }}
+          TO: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          # A newly pushed branch has no "before" commit.
+          if [ -z "$FROM" ] || [ "$FROM" = "0000000000000000000000000000000000000000" ]; then
+            bunx commitlint --last --verbose
+          else
+            bunx commitlint --from "$FROM" --to "$TO" --verbose
+          fi
+
   check:
     name: Bun
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun run check
@@ -27,9 +50,9 @@ jobs:
       matrix:
         node: [20, 22, 24]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
       - run: bun install --frozen-lockfile
@@ -44,7 +67,7 @@ jobs:
         # Oldest supported and latest release of the peer dependency.
         prettier: ["3.0.0", "latest"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun add --no-save prettier@${{ matrix.prettier }}

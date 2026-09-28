@@ -119,6 +119,16 @@ describe("shorthand syntax", () => {
     await assertFormat(source, source);
   });
 
+  test("escaped quotes in ViewHelper arguments outside of expressions", async () => {
+    const source = `<f:link.typolink\n  parameter="{link}"\n  textWrap="<span class=\\"icon\\">|</span>"\n/>\n`;
+    await assertFormat(source, source);
+  });
+
+  test("expression syntax: ternary, casts, arithmetic, negation", async () => {
+    const source = `<p>\n  {foo ? x : y} {foo ?: y} {!foo ?: y} {foo as boolean} {foo % 5} {foo ^ 5}\n  {true ? false: true}\n</p>\n`;
+    await assertFormat(source, source);
+  });
+
   test("in attribute-name position", async () => {
     const source = `<div {attributes -> f:format.raw()} class="a"></div>\n`;
     await assertFormat(source, source);

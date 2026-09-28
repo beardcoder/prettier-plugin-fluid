@@ -407,6 +407,8 @@ class Preprocessor {
   /** @type {Map<number, string>} */ #assetCloses = new Map();
   /** HTML offsets of renamed asset tags and their original names. */
   /** @type {Map<number, string>} */ #assetTags = new Map();
+  /** ViewHelper argument values with escaped quotes: start → end. */
+  /** @type {Map<number, number>} */ #escapedValues = new Map();
 
   /**
    * @param {string} source
@@ -441,6 +443,12 @@ class Preprocessor {
   run() {
     const source = this.#source;
     while (this.#pos < source.length) {
+      const escapedValueEnd = this.#escapedValues.get(this.#pos);
+      if (escapedValueEnd !== undefined) {
+        this.#escapedValues.delete(this.#pos);
+        this.#replace(escapedValueEnd, false);
+        continue;
+      }
       if (this.#pos === this.#rawTextBody?.start) {
         // Script/style bodies go untouched to Prettier's embedded formatters.
         this.#pos = this.#rawTextBody.end;
@@ -635,6 +643,9 @@ class Preprocessor {
       // `<f:if` becomes the custom element `<f-qz-if`. With a namespaced name,
       // the HTML parser would put every child into the `f` namespace, where
       // e.g. `<input>` is no void element and `<p>` has no implied end tag.
+      if (!slash) {
+        this.#findEscapedValues();
+      }
       const renamed = `<${slash}${namespace}-${this.#nonce}-${name}`;
       this.#emit(renamed, this.#pos + tag.length);
       return true;
@@ -700,6 +711,30 @@ class Preprocessor {
     this.#assetCloses.set(element.bodyEnd, htmlName);
     this.#rawTextBody = { start: element.bodyStart, end: element.bodyEnd };
     return true;
+  }
+
+  /**
+   * Fluid allows backslash-escaped quotes in ViewHelper arguments, also
+   * outside of `{…}`: `textWrap="<span class=\"icon\">|</span>"`. An HTML
+   * parser would end the value at `\"`, so such values are protected as a
+   * whole.
+   */
+  #findEscapedValues() {
+    const tagEnd = findTagEnd(this.#source, this.#pos);
+    for (let i = this.#pos; i < tagEnd; i++) {
+      const char = this.#source[i];
+      if (char !== '"' && char !== "'") {
+        continue;
+      }
+      const end = skipQuoted(this.#source, i);
+      if (end === -1) {
+        return;
+      }
+      if (this.#source.slice(i + 1, end - 1).includes(`\\${char}`)) {
+        this.#escapedValues.set(i + 1, end - 1);
+      }
+      i = end - 1;
+    }
   }
 
   /** `<!-- prettier-ignore -->` / `<!-- display: x -->` must stay adjacent to their tag. */

@@ -20,6 +20,7 @@ const { hardline, join } = prettier.doc.builders;
  *   fluidVerbatimViewHelpers?: string[],
  *   fluidIndentRoot?: boolean,
  *   fluidRootAttributePerLine?: boolean,
+ *   fluidFinalNewline?: boolean,
  * }} FluidOptions
  */
 
@@ -143,6 +144,13 @@ export const options = {
     description:
       "Put every attribute of the root tag on its own line. Only with fluidIndentRoot: false.",
   },
+  fluidFinalNewline: {
+    category: "Fluid",
+    type: "boolean",
+    default: true,
+    description:
+      "End the file with a line break. With false, the last line has none.",
+  },
 };
 
 /**
@@ -246,11 +254,15 @@ export const parsers = {
 /** @type {Plugin<FluidRoot>["printers"]} */
 export const printers = {
   fluid: {
-    print({ node }) {
+    print({ node }, /** @type {FluidOptions} */ options) {
       const lines = node.formatted.trimEnd().split("\n");
-      return lines.length === 1 && lines[0] === ""
-        ? ""
-        : [join(hardline, lines), hardline];
+      if (lines.length === 1 && lines[0] === "") {
+        return "";
+      }
+      const content = join(hardline, lines);
+      return options.fluidFinalNewline === false
+        ? content
+        : [content, hardline];
     },
     insertPragma: (text) => `<!-- @format -->\n\n${text}`,
   },

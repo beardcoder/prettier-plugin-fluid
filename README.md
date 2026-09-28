@@ -122,6 +122,7 @@ moves them to the front.
 | `fluidVerbatimViewHelpers`  | `[]`    | Additional ViewHelpers kept exactly as written, like `f:comment`. `f:spaceless` always is. Wildcards ok. |
 | `fluidIndentRoot`           | `true`  | Indent the content of the root `<fluid>` tag. See [root tag](#root-tag).                                 |
 | `fluidRootAttributePerLine` | `false` | With `fluidIndentRoot: false`: put every attribute of the root tag on its own line.                      |
+| `fluidFinalNewline`         | `true`  | End the file with a line break. `false` omits it, e.g. for projects whose templates have none.           |
 
 All standard Prettier options apply, such as `printWidth`, `tabWidth`,
 `bracketSameLine` and `singleAttributePerLine`.
@@ -228,7 +229,8 @@ The plugin also supports `requirePragma` and `insertPragma`
   - CSS in `style` attributes is normalized, e.g. a missing `;` is added.
   - Short content is joined into one line: `<div>\n  x\n</div>` → `<div>x</div>`,
     also inside ViewHelpers like `<f:else>`.
-  - Files end with exactly one line break.
+  - Files end with exactly one line break, unless `fluidFinalNewline` is
+    `false`.
 - A block ViewHelper inside inline content may add whitespace, just as Prettier
   does around block elements.
 - Multi-line Fluid expressions keep their line breaks. A tag containing one

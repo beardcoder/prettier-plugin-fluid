@@ -255,6 +255,22 @@ describe("fluidIndentRoot: false", () => {
   });
 });
 
+describe("fluidFinalNewline", () => {
+  test("true (default) ends the file with a line break", async () => {
+    await assertFormat(`<p>{a}</p>`, `<p>{a}</p>\n`);
+  });
+
+  test("false removes the final line break", async () => {
+    const options = { fluidFinalNewline: false };
+    await assertFormat(`<p>{a}</p>\n\n`, `<p>{a}</p>`, options);
+    await assertFormat(
+      `<fluid data-namespace-typo3-fluid="true">\n<p>x</p>\n</fluid>\n`,
+      `<fluid data-namespace-typo3-fluid="true">\n\n<p>x</p>\n\n</fluid>`,
+      { ...options, fluidIndentRoot: false },
+    );
+  });
+});
+
 describe("pragma", () => {
   test("requirePragma", async () => {
     const source = `<div><f:if condition="{a}">x</f:if></div>`;

@@ -1,16 +1,19 @@
 name: Release
 
-# Publishes to npm when a GitHub release is published (tag vX.Y.Z).
+# Runs when a version tag is pushed (`bun pm version <patch|minor|major>` and
+# `git push --follow-tags`): publishes to npm, then creates the GitHub release
+# with the matching CHANGELOG.md section as notes.
+#
 # Requires the repository secret NPM_TOKEN: an npm granular access token with
 # publish rights for @beardcoder/prettier-plugin-fluid and "bypass 2FA"
 # enabled, since CI cannot enter a one-time password.
 
 on:
-  release:
-    types: [published]
+  push:
+    tags: ["v*"]
 
 permissions:
-  contents: read
+  contents: write # create the GitHub release
 
 jobs:
   publish:
@@ -31,3 +34,15 @@ jobs:
       - run: bun publish --access public
         env:
           NPM_CONFIG_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { found = 1; next }
+            found && /^## \[/ { exit }
+            found && /^\[.*\]: / { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file release-notes.md

@@ -192,12 +192,15 @@ well-nested HTML, and templates where Prettier normalized content.
 
 ### Releasing
 
-1. Update `CHANGELOG.md` and bump the version: `bun pm version <patch|minor|major>`.
-2. Push the commit and tag: `git push --follow-tags`.
-3. Publish a GitHub release for the tag. The
-   [release workflow](.github/workflows/release.yml) runs all checks and
-   publishes to npm with `bun publish`. It needs the `NPM_TOKEN` secret: a
-   granular npm token with "bypass 2FA".
+1. Add the new version's section to `CHANGELOG.md` and commit it.
+2. Bump the version, which commits and creates the tag:
+   `bun pm version <patch|minor|major>`.
+3. Push the commit and tag: `git push --follow-tags`.
+
+The [release workflow](.github/workflows/release.yml) runs all checks and
+publishes to npm with `bun publish`. It then creates the GitHub release with
+the matching `CHANGELOG.md` section. It needs the `NPM_TOKEN` secret: a
+granular npm token with "bypass 2FA".
 
 ## License
 

@@ -44,9 +44,39 @@ async function* htmlFiles(dir) {
 /** @param {string[]} list */
 const sorted = (list) => JSON.stringify(list.toSorted());
 
+/**
+ * Collapses whitespace outside of quoted strings: the plugin re-indents the
+ * lines of multi-line expressions, which does not change their meaning.
+ * Whitespace inside strings is output and must stay exactly as written.
+ *
+ * @param {string} source
+ */
+function normalizeExpression(source) {
+  let result = "";
+  let quote;
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i];
+    if (char === "\\") {
+      result += char + (source[i + 1] ?? "");
+      i++;
+    } else if (quote === undefined && /\s/.test(char)) {
+      if (!result.endsWith(" ")) result += " ";
+    } else {
+      if (quote === undefined && (char === '"' || char === "'")) quote = char;
+      else if (char === quote) quote = undefined;
+      result += char;
+    }
+  }
+  return result;
+}
+
 /** Fluid expressions and comments, order-independent. */
 const fluidFragments = (/** @type {string} */ text) =>
-  sorted(preprocess(text).state.fragments.map(({ source }) => source));
+  sorted(
+    preprocess(text).state.fragments.map(({ source, comment }) =>
+      comment ? source : normalizeExpression(source),
+    ),
+  );
 
 const viewHelperTags = (/** @type {string} */ text) =>
   sorted(text.match(/<\/?[a-zA-Z0-9.]*:[a-zA-Z0-9.]+/g) ?? []);

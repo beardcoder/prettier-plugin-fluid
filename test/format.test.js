@@ -149,6 +149,30 @@ describe("f:comment", () => {
   });
 });
 
+describe("attribute quotes", () => {
+  test("single-quoted values with JSON keep their quotes", async () => {
+    await assertFormat(
+      `<div a='{"w":"1"}'></div>`,
+      `<div a='{"w":"1"}'></div>\n`,
+    );
+    await assertFormat(
+      `<my-player style-config='{"width":"100%"}' class="x"></my-player>`,
+      `<my-player style-config='{"width":"100%"}' class="x"></my-player>\n`,
+    );
+  });
+
+  test("refuses to write a value that fits no quotes", () => {
+    const { html, state } = preprocess(`<div a='{"w":"1"}'></div>`);
+    // Simulate Prettier printing the value with double quotes next to a
+    // single quote it cannot move.
+    const broken = html.replace(/a='([^']*)'/, `a="$1 it's"`);
+    assert.throws(
+      () => restore(broken, state),
+      /cannot quote the attribute value/,
+    );
+  });
+});
+
 describe("pragma", () => {
   test("requirePragma", async () => {
     const source = `<div><f:if condition="{a}">x</f:if></div>`;

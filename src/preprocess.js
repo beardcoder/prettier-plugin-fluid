@@ -33,6 +33,7 @@
  * @property {number} sourceEnd
  *
  * @typedef {object} RestoreState
+ * @property {string} source The original template.
  * @property {string} nonce
  * @property {string[]} hints Comments inserted to steer Prettier.
  * @property {Fragment[]} fragments
@@ -413,6 +414,7 @@ class Preprocessor {
 
     /** @type {RestoreState} */
     const state = {
+      source: this.#source,
       nonce: this.#nonce,
       hints: [this.#displayHint, this.#ignoreHint],
       fragments: this.#fragments,
@@ -598,7 +600,8 @@ export const preprocess = (source, options = {}) =>
  * @param {string} formatted
  * @param {RestoreState} state
  */
-export function restore(formatted, { nonce, hints, fragments }) {
+export function restore(formatted, state) {
+  const { nonce, hints, fragments } = state;
   const hint = new RegExp(
     `(?:${hints.map(escapeRegExp).join("|")})(?:\\n[ \\t]*)?`,
     "g",
@@ -606,21 +609,22 @@ export function restore(formatted, { nonce, hints, fragments }) {
   const placeholder = new RegExp(`(<!--)?${nonce}(\\d+)_*${nonce}(-->)?`, "g");
   const restored = new Set();
 
-  const result = restoreTagNames(formatted.replace(hint, ""), nonce).replace(
-    placeholder,
-    (match, open, id, close) => {
-      const fragment = fragments[Number(id)];
-      if (!fragment.comment) {
-        restored.add(Number(id));
-        return `${open ?? ""}${fragment.source}${close ?? ""}`;
-      }
-      if (open && close) {
-        restored.add(Number(id));
-        return fragment.source;
-      }
-      return match;
-    },
+  const text = fixAttributeQuotes(
+    restoreTagNames(formatted.replace(hint, ""), nonce),
+    state,
   );
+  const result = text.replace(placeholder, (match, open, id, close) => {
+    const fragment = fragments[Number(id)];
+    if (!fragment.comment) {
+      restored.add(Number(id));
+      return `${open ?? ""}${fragment.source}${close ?? ""}`;
+    }
+    if (open && close) {
+      restored.add(Number(id));
+      return fragment.source;
+    }
+    return match;
+  });
 
   if (restored.size !== fragments.length) {
     const lost = fragments
@@ -631,6 +635,51 @@ export function restore(formatted, { nonce, hints, fragments }) {
     );
   }
   return result;
+}
+
+/**
+ * Prettier picks the quotes of an attribute value by the quotes it contains,
+ * but cannot see quotes inside placeholders. A value like '{"w":"1"}' would be
+ * printed as "…" and turn into invalid HTML once restored, so switch such
+ * values to the other quote character. Fails if neither quote works.
+ *
+ * @param {string} text Formatted HTML with placeholders.
+ * @param {RestoreState} state
+ */
+function fixAttributeQuotes(text, { source, nonce, fragments }) {
+  const placeholder = new RegExp(`${nonce}(\\d+)_*${nonce}`, "g");
+  const quoted = new RegExp(
+    `=(["'])([^"'\\n]*?${nonce}\\d+_*${nonce}[^\\n]*?)\\1`,
+    "g",
+  );
+  return text.replace(quoted, (match, quote, value) => {
+    const other = quote === '"' ? "'" : '"';
+    const full = value.replace(
+      placeholder,
+      (/** @type {string} */ _, /** @type {string} */ id) =>
+        fragments[Number(id)].source,
+    );
+    // Backslash-escaped quotes are Fluid syntax (`"{a: \\"b\\"}"`) and fine.
+    const hasRaw = (/** @type {string} */ text, /** @type {string} */ char) =>
+      new RegExp(`(?<!\\\\)${char}`).test(text);
+    if (!hasRaw(full, quote)) {
+      return match;
+    }
+    const entity = quote === '"' ? "&quot;" : "&apos;";
+    const unescaped = value.replaceAll(entity, quote);
+    const unescapedFull = full.replaceAll(entity, quote);
+    if (hasRaw(unescapedFull, other)) {
+      // No quote character works. Fine if the template already had it so
+      // (Fluid accepts it); otherwise refuse to write invalid HTML.
+      if (source.includes(`${quote}${unescapedFull}${quote}`)) {
+        return match;
+      }
+      throw new Error(
+        `prettier-plugin-fluid: cannot quote the attribute value ${full}: it contains both quote characters. Refusing to write invalid HTML.`,
+      );
+    }
+    return `=${other}${unescaped}${other}`;
+  });
 }
 
 /**

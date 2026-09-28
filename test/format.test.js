@@ -220,20 +220,44 @@ describe("robustness", () => {
   });
 
   test("parse errors point at the Fluid source", async () => {
-    const source = `<div>\n  {some.long -> f:format.raw()}\n  <f:if condition="{a}"><section></f:if>\n</div>`;
+    const source = `<div>\n  {some.long -> f:format.raw()}\n  <f:if condition="{a}"><p>{b}</p></f:if>\n  <section class="{c}"></div>`;
     await assert.rejects(format(source), (error) => {
       // The code frame is syntax-highlighted when running in a color terminal.
       const message = stripVTControlCharacters(error.message);
-      assert.deepEqual(error.loc.start, { line: 3, column: 34 });
-      assert.match(message, /^Unexpected closing tag "f:if"/);
+      assert.deepEqual(error.loc.start, { line: 4, column: 24 });
+      assert.match(message, /^Unexpected closing tag "div"/);
       assert.match(message, /Fluid templates must be well-nested HTML/);
       // code frame shows the original template, not placeholders
-      assert.match(
-        message,
-        /> 3 \|   <f:if condition="\{a\}"><section><\/f:if>/,
-      );
+      assert.match(message, /> 4 \|   <section class="\{c\}"><\/div>/);
       return true;
     });
+  });
+
+  test("conditional wrappers are kept as written", async () => {
+    const source = `<div class="outer"><f:if condition="{wrap}"><div class="wrapper">
+    </f:if>
+<p>content   here</p>
+<f:if condition="{wrap}"></div></f:if></div>`;
+    await assertFormat(
+      source,
+      `<div class="outer">
+  <f:if condition="{wrap}"><div class="wrapper">
+    </f:if>
+  <p>content here</p>
+  <f:if condition="{wrap}"></div></f:if>
+</div>
+`,
+    );
+  });
+
+  test("conditional opening tags in f:then/f:else are kept as written", async () => {
+    const source = `<table><tr><f:if condition="{header}"><f:then><th></f:then><f:else><td></f:else></f:if>{cell}</tr></table>\n`;
+    const output = await format(source);
+    assert.match(
+      output,
+      /<f:if condition="\{header\}"><f:then><th><\/f:then><f:else><td><\/f:else><\/f:if>/,
+    );
+    assert.equal(await format(output), output);
   });
 
   test("refuses to drop Fluid code", () => {

@@ -16,11 +16,13 @@
   `f:section`, …) are laid out as blocks. Inline ones (`f:link.*`,
   `f:translate`, …) behave like `<a>`. Custom ViewHelpers
   [are configurable](#custom-viewhelpers).
-- **Safe by design.** `<f:comment>` content, CDATA sections and `<script>` or
-  `<style>` blocks that contain Fluid code are kept verbatim. If formatting
-  would ever drop Fluid code, the plugin fails instead of writing the file.
-- **Helpful errors.** When a template is not well-nested HTML, the error
-  points at the line and column in your template.
+- **Safe by design.** Some parts are kept verbatim: `<f:comment>` content,
+  CDATA sections, conditional wrappers like
+  `<f:if …><div></f:if>`, and `<script>`/`<style>` blocks that contain Fluid
+  code. If formatting would ever drop Fluid code, the plugin fails instead of
+  writing the file.
+- **Helpful errors.** When a template is invalid HTML, the error points at the
+  line and column in your template.
 
 ## Installation
 
@@ -136,16 +138,22 @@ The plugin also supports `requirePragma` and `insertPragma`
 
 ## Limitations
 
-- **Templates must be well-nested HTML.** Fluid allows conditions around
-  only an opening or a closing tag, but an HTML formatter cannot handle them:
+- **Conditional wrappers are kept as written.** Fluid allows a ViewHelper
+  around only an opening or a closing tag:
 
   ```html
   <f:if condition="{link}"><a href="{link}"></f:if>
   ```
 
-  These templates fail with a clear error message. Restructure them (e.g. with
-  `f:variable` or a partial), or exclude them with `<!-- prettier-ignore -->`
-  or `.prettierignore`.
+  An HTML formatter cannot restructure such a ViewHelper element, so it is kept
+  exactly as written. The rest of the template is still formatted. For the same
+  reason, elements with implied end tags inside a ViewHelper (`<li>a<li>b`) are
+  kept as written.
+
+- **Invalid HTML elsewhere fails.** Examples are Fluid tags inside another
+  tag's attribute list, or a tag that is never closed. Such templates fail with
+  an error that points at the line and column in the template. Restructure
+  them, or exclude them with `<!-- prettier-ignore -->` or `.prettierignore`.
 
 - As with plain HTML, Prettier completes implied end tags (`<li>a<li>b` →
   `<li>a</li><li>b</li>`) and formats CSS in `style` attributes.

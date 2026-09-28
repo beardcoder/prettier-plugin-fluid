@@ -229,6 +229,129 @@ function findTagEnd(text, index) {
   return -1;
 }
 
+const VOID_ELEMENTS = new Set([
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "source",
+  "track",
+  "wbr",
+]);
+const RAW_TEXT_ELEMENTS = new Set(["script", "style", "textarea"]);
+// Tag names may contain Fluid expressions: <h{level}>.
+const ANY_TAG = /<(\/?)([a-zA-Z][^\s/>]*)/y;
+
+/**
+ * Finds the end of the ViewHelper element whose opening tag starts at `start`.
+ *
+ * @param {string} text
+ * @param {number} start
+ * @param {string} name e.g. `f:if`
+ * @returns {{ bodyStart: number, bodyEnd: number, end: number } | undefined}
+ *   Undefined for self-closing or unclosed elements.
+ */
+function findViewHelperElement(text, start, name) {
+  const tags = new RegExp(`<(/?)${escapeRegExp(name)}(?=[\\s/>])`, "g");
+  tags.lastIndex = start;
+  let depth = 0;
+  let bodyStart = -1;
+  for (let match; (match = tags.exec(text));) {
+    const tagEnd = findTagEnd(text, match.index);
+    if (tagEnd === -1) {
+      return undefined;
+    }
+    if (match[1]) {
+      depth--;
+      if (depth === 0) {
+        return { bodyStart, bodyEnd: match.index, end: tagEnd };
+      }
+    } else if (text[tagEnd - 2] !== "/") {
+      depth++;
+      if (bodyStart === -1) {
+        bodyStart = tagEnd;
+      }
+    } else if (depth === 0) {
+      return undefined;
+    }
+    tags.lastIndex = tagEnd;
+  }
+  return undefined;
+}
+
+/**
+ * Whether `text` is a well-nested sequence of HTML/ViewHelper elements, e.g.
+ * not just the opening `<div>` of a conditional wrapper. Deliberately strict:
+ * implied end tags (`<li>a<li>b`) also count as unbalanced.
+ *
+ * @param {string} text
+ */
+function isBalancedHtml(text) {
+  /** @type {string[]} */
+  const stack = [];
+  let i = 0;
+  while (i < text.length) {
+    const char = text[i];
+    if (char === "{") {
+      const end = matchShorthand(text, i);
+      i = end === -1 ? i + 1 : end;
+      continue;
+    }
+    if (char !== "<") {
+      i++;
+      continue;
+    }
+    const terminator = text.startsWith("<!--", i)
+      ? "-->"
+      : text.startsWith("<![CDATA[", i)
+        ? "]]>"
+        : undefined;
+    if (terminator) {
+      const end = text.indexOf(terminator, i);
+      if (end === -1) {
+        return false;
+      }
+      i = end + terminator.length;
+      continue;
+    }
+    ANY_TAG.lastIndex = i;
+    const match = ANY_TAG.exec(text);
+    if (!match) {
+      i++;
+      continue;
+    }
+    const tagEnd = findTagEnd(text, i);
+    if (tagEnd === -1) {
+      return false;
+    }
+    const [, slash, rawName] = match;
+    const name = rawName.includes(":") ? rawName : rawName.toLowerCase();
+    i = tagEnd;
+    if (slash) {
+      if (stack.pop() !== name) {
+        return false;
+      }
+    } else if (text[tagEnd - 2] !== "/" && !VOID_ELEMENTS.has(name)) {
+      if (RAW_TEXT_ELEMENTS.has(name) || name === "f:comment") {
+        // Skip content that is no markup.
+        const close = text.indexOf(`</${rawName}`, i);
+        if (close === -1) {
+          return false;
+        }
+        i = close;
+      }
+      stack.push(name);
+    }
+  }
+  return stack.length === 0;
+}
+
 class Preprocessor {
   /** @type {string} */ #source;
   /** @type {(name: string) => boolean} */ #isBlockViewHelper;
@@ -245,6 +368,8 @@ class Preprocessor {
   /** Start of the source range not yet copied to #output. */
   #pending = 0;
   /** @type {{ start: number, end: number } | undefined} */ #rawTextBody;
+  /** End of a ViewHelper element whose content is known to be well-nested. */
+  #checkedUntil = 0;
 
   /**
    * @param {string} source
@@ -403,6 +528,22 @@ class Preprocessor {
     const viewHelper = this.#matchAt(TOKEN.viewHelperTag);
     if (viewHelper) {
       const [tag, slash, namespace, name] = viewHelper;
+      if (!slash && this.#pos >= this.#checkedUntil) {
+        const element = findViewHelperElement(
+          this.#source,
+          this.#pos,
+          `${namespace}:${name}`,
+        );
+        if (element) {
+          const body = this.#source.slice(element.bodyStart, element.bodyEnd);
+          if (!isBalancedHtml(body)) {
+            // A conditional wrapper like `<f:if …><div></f:if>` cannot be
+            // formatted as HTML; keep the whole element as written.
+            return this.#replace(element.end, true);
+          }
+          this.#checkedUntil = element.end;
+        }
+      }
       if (
         !slash &&
         this.#isBlockViewHelper(`${namespace}:${name}`) &&

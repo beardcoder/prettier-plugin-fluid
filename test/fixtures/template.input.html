@@ -1,0 +1,16 @@
+<html xmlns:f="http://typo3.org/ns/TYPO3/CMS/Fluid/ViewHelpers" data-namespace-typo3-fluid="true">
+{namespace v=FluidTYPO3\Vhs\ViewHelpers}
+<f:layout name="Default" />
+<f:section name="Main">
+<div id="x" class="b a" data-foo="1"><f:if condition="{items -> f:count()} > 0"><f:then><ul><f:for each="{items}" as="item" iteration="i"><li class="{f:if(condition: i.isFirst, then: 'first')} item">{item.title -> f:format.crop(maxCharacters: 20)}</li></f:for></ul></f:then><f:else><p>Hallo <strong>{user.name}</strong>, {f:translate(key: 'empty', default: 'Keine Einträge vorhanden in dieser Liste')}</p></f:else></f:if></div>
+<f:link.action action="show" arguments="{item: item}" class="btn">Mehr</f:link.action>
+<f:comment>Kommentar {foo}</f:comment>
+<![CDATA[ foo {bar} <b> ]]>
+<!-- prettier-ignore -->
+<f:if condition="{a}"><b>keep   this</b></f:if>
+<script>var config = {settings.foo}; function x(){return 1}</script>
+<style>.a{color:red}</style>
+<f:render partial="Foo" arguments="{_all}" />
+<f:form.textfield property="name" additionalAttributes="{placeholder: \"Name\"}" />
+</f:section>
+</html>

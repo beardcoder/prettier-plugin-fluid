@@ -1,0 +1,3 @@
+# Fixtures must stay exactly as written.
+test/fixtures/
+package-lock.json

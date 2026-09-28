@@ -1,0 +1,193 @@
+# @beardcoder/prettier-plugin-fluid
+
+[![npm](https://img.shields.io/npm/v/@beardcoder/prettier-plugin-fluid)](https://www.npmjs.com/package/@beardcoder/prettier-plugin-fluid)
+[![CI](https://github.com/beardcoder/prettier-plugin-fluid/actions/workflows/ci.yml/badge.svg)](https://github.com/beardcoder/prettier-plugin-fluid/actions/workflows/ci.yml)
+
+[Prettier](https://prettier.io) plugin for [TYPO3 Fluid](https://github.com/typo3/fluid) templates.
+
+- **Plays nicely with other plugins.** The HTML structure is formatted by
+  Prettier's own `html` parser, so plugins that hook into it keep working, such as
+  [attribute sorting](#sorting-attributes) and Tailwind class sorting.
+- **Never touches your Fluid code.** Shorthand syntax like
+  `{item.title -> f:format.crop(maxCharacters: 20)}` is kept byte-for-byte,
+  including arbitrarily nested inline syntax and escaped quotes:
+  `{f:if(condition: '{a}', then: '{f:translate(key: \'x\')}')}`.
+- **Understands ViewHelpers.** Structural tags (`f:if`, `f:for`,
+  `f:section`, …) are laid out as blocks. Inline ones (`f:link.*`,
+  `f:translate`, …) behave like `<a>`. Custom ViewHelpers
+  [are configurable](#custom-viewhelpers).
+- **Safe by design.** `<f:comment>` content, CDATA sections and `<script>` or
+  `<style>` blocks that contain Fluid code are kept verbatim. If formatting
+  would ever drop Fluid code, the plugin fails instead of writing the file.
+- **Helpful errors.** When a template is not well-nested HTML, the error
+  points at the line and column in your template.
+
+## Installation
+
+```sh
+npm install --save-dev prettier @beardcoder/prettier-plugin-fluid
+```
+
+Requires Prettier 3 and Node.js 20 or later.
+
+Fluid templates are usually plain `.html` files, so assign the `fluid` parser
+to them in your Prettier config (`.prettierrc.json`):
+
+```json
+{
+  "plugins": ["@beardcoder/prettier-plugin-fluid"],
+  "overrides": [
+    {
+      "files": ["**/Resources/Private/{Templates,Partials,Layouts}/**/*.html"],
+      "options": { "parser": "fluid" }
+    }
+  ]
+}
+```
+
+Files ending in `.fluid` or `.fluid.html` are detected automatically.
+
+```sh
+npx prettier --write "**/Resources/Private/**/*.html"
+```
+
+## Sorting attributes
+
+Use
+[`prettier-plugin-organize-attributes`](https://github.com/NiklasPor/prettier-plugin-organize-attributes).
+It sorts attributes on HTML tags and on ViewHelper tags:
+
+```json
+{
+  "plugins": [
+    "@beardcoder/prettier-plugin-fluid",
+    "prettier-plugin-organize-attributes"
+  ],
+  "attributeGroups": ["$CLASS", "$ID", "$NAME", "$DATA", "$DEFAULT", "$ARIA"],
+  "attributeSort": "ASC"
+}
+```
+
+organize-attributes matches namespaced attributes by their local name only
+(`xmlns:f` → `f`), so a `^xmlns` group does not work.
+
+### Tailwind CSS
+
+Add
+[`prettier-plugin-tailwindcss`](https://github.com/tailwindlabs/prettier-plugin-tailwindcss)
+as the **last** plugin. It chains organize-attributes internally:
+
+```json
+{
+  "plugins": [
+    "@beardcoder/prettier-plugin-fluid",
+    "prettier-plugin-organize-attributes",
+    "prettier-plugin-tailwindcss"
+  ]
+}
+```
+
+Tailwind treats Fluid expressions inside `class` as unknown classes and
+moves them to the front.
+
+## Options
+
+| Option                   | Default | Description                                                                       |
+| ------------------------ | ------- | --------------------------------------------------------------------------------- |
+| `fluidBlockViewHelpers`  | `[]`    | Additional ViewHelpers laid out as blocks. Supports `*` wildcards.                |
+| `fluidInlineViewHelpers` | `[]`    | ViewHelpers laid out inline even if they are blocks by default. Takes precedence. |
+
+All standard Prettier options apply, such as `printWidth`, `tabWidth`,
+`bracketSameLine` and `singleAttributePerLine`.
+
+### Custom ViewHelpers
+
+Every tag of the form `<ns:name>` is recognized as a ViewHelper, including
+your own (`<my:card.teaser>`) and third-party ones (`<v:variable.set>`).
+Only these core ViewHelpers are blocks by default:
+
+`f:if` `f:then` `f:else` `f:for` `f:groupedFor` `f:switch` `f:case`
+`f:defaultCase` `f:section` `f:layout` `f:render` `f:variable` `f:alias`
+`f:argument` `f:slot` `f:fragment` `f:spaceless` `f:cache.*` `f:comment`
+`f:form` `f:asset.css` `f:asset.script`
+
+Custom ViewHelpers that wrap markup should usually be added:
+
+```json
+{
+  "fluidBlockViewHelpers": ["my:grid", "my:card.*", "v:variable.set"]
+}
+```
+
+To change the layout of a single tag, put `<!-- display: inline -->` or
+`<!-- display: block -->` in front of it.
+
+### Ignoring code
+
+```html
+<!-- prettier-ignore -->
+<f:if condition="{a}"><b>kept   exactly as written</b></f:if>
+```
+
+The plugin also supports `requirePragma` and `insertPragma`
+(`<!-- @format -->`).
+
+## Limitations
+
+- **Templates must be well-nested HTML.** Fluid allows conditions around
+  only an opening or a closing tag, but an HTML formatter cannot handle them:
+
+  ```html
+  <f:if condition="{link}"><a href="{link}"></f:if>
+  ```
+
+  These templates fail with a clear error message. Restructure them (e.g. with
+  `f:variable` or a partial), or exclude them with `<!-- prettier-ignore -->`
+  or `.prettierignore`.
+
+- As with plain HTML, Prettier completes implied end tags (`<li>a<li>b` →
+  `<li>a</li><li>b</li>`) and formats CSS in `style` attributes.
+- A block ViewHelper inside inline content may add whitespace, just as Prettier
+  does around block elements.
+- Multi-line Fluid expressions are kept as written and are not re-indented.
+- Range formatting always formats the whole file.
+
+## How it works
+
+1. Every Fluid shorthand expression is replaced by an opaque placeholder of
+   the same width. The expressions are found with the grammar of Fluid's
+   `SPLIT_PATTERN_SHORTHANDSYNTAX`. Equal expressions share a placeholder, so
+   dynamic tag names like `<h{level}>…</h{level}>` stay balanced.
+2. `<f:comment>` elements become opaque HTML comments. Block ViewHelpers get a
+   hidden `<!-- display: block -->` hint. Script and style blocks that contain
+   Fluid get a hidden `<!-- prettier-ignore -->`.
+3. The result is formatted with `parser: "html"`, which uses whichever `html`
+   parser the loaded plugins provide.
+4. The hints are removed and every placeholder is replaced by the original
+   code. A missing placeholder is an error. Parse errors are mapped back to the
+   template's own line and column.
+
+## Development
+
+```sh
+npm install
+npm run check                        # types (tsc on JSDoc), formatting, tests
+UPDATE=1 npm test                    # regenerate test/fixtures/*.output.html
+npm run corpus -- path/to/templates  # lossless + idempotency check on real templates
+```
+
+`npm run corpus` formats every `.html` file below the given directories. It
+verifies that no Fluid expression, ViewHelper tag or content character is lost
+and that a second formatting pass changes nothing.
+
+### Releasing
+
+1. Update `CHANGELOG.md` and bump the version: `npm version <patch|minor|major>`.
+2. Push the commit and tag: `git push --follow-tags`.
+3. Publish a GitHub release for the tag. The
+   [release workflow](.github/workflows/release.yml) publishes to npm with
+   provenance.
+
+## License
+
+[MIT](LICENSE)

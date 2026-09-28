@@ -1,0 +1,9 @@
+<html xmlns:f="http://typo3.org/ns/TYPO3/CMS/Fluid/ViewHelpers" xmlns:v="http://typo3.org/ns/FluidTYPO3/Vhs/ViewHelpers" xmlns:my="http://typo3.org/ns/Vendor/Site/ViewHelpers" data-namespace-typo3-fluid="true">
+<f:section name="Main">
+<f:comment>
+  Disabled: <v:variable.set name="x" value="{broken
+</f:comment>
+<v:variable.set name="teasers" value="{my:data.teasers(limit: '{settings.limit}', category: '{data.uid -> my:category.forContent()}')}" />
+<my:grid columns="3" class="gap-4 grid"><f:for each="{teasers}" as="teaser"><my:card.teaser teaser="{teaser}" link="{v:uri.page(pageUid: teaser.pid)}"><my:icon name="{teaser.icon}" /> {teaser.title -> v:format.eliminate(whitespace: 1) -> f:format.crop(maxCharacters: 60)}</my:card.teaser></f:for></my:grid>
+</f:section>
+</html>

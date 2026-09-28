@@ -1,0 +1,58 @@
+{
+  "name": "@beardcoder/prettier-plugin-fluid",
+  "version": "0.1.0",
+  "description": "Prettier plugin for TYPO3 Fluid templates that plays nicely with other HTML plugins",
+  "keywords": [
+    "prettier",
+    "prettier-plugin",
+    "typo3",
+    "fluid",
+    "fluid-templates",
+    "formatter"
+  ],
+  "homepage": "https://github.com/beardcoder/prettier-plugin-fluid#readme",
+  "bugs": {
+    "url": "https://github.com/beardcoder/prettier-plugin-fluid/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/beardcoder/prettier-plugin-fluid.git"
+  },
+  "license": "MIT",
+  "author": "Markus Sommer (https://github.com/beardcoder)",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./package.json": "./package.json"
+  },
+  "main": "src/index.js",
+  "files": [
+    "src",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "check": "npm run typecheck && npm run format:check && npm test",
+    "corpus": "node scripts/check-corpus.js",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepublishOnly": "npm run check",
+    "test": "node --test test/",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.9",
+    "prettier-plugin-organize-attributes": "^1.0.0",
+    "prettier-plugin-tailwindcss": "^0.8.1",
+    "typescript": "^7.0.2"
+  },
+  "peerDependencies": {
+    "prettier": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

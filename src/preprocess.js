@@ -66,7 +66,10 @@
  */
 export const DEFAULT_VERBATIM_VIEWHELPERS = Object.freeze(["f:spaceless"]);
 
-/** Tags from typo3/fluid and TYPO3 core that structure a template. */
+/**
+ * Tags from typo3/fluid and TYPO3 core that structure a template. `formvh` is
+ * the namespace EXT:form's own templates use for its ViewHelpers.
+ */
 export const DEFAULT_BLOCK_VIEWHELPERS = Object.freeze([
   "f:alias",
   "f:argument",
@@ -90,6 +93,10 @@ export const DEFAULT_BLOCK_VIEWHELPERS = Object.freeze([
   "f:switch",
   "f:then",
   "f:variable",
+  "formvh:form",
+  "formvh:renderAllFormValues",
+  "formvh:renderFormValue",
+  "formvh:renderRenderable",
 ]);
 
 // Characters Fluid accepts in shorthand syntax, see

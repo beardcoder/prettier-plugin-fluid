@@ -46,6 +46,13 @@ describe("layout", () => {
     );
   });
 
+  test("EXT:form ViewHelpers that render children are blocks", async () => {
+    await assertFormat(
+      `<f:section name="Main">\n<formvh:renderAllFormValues renderable="{form.formDefinition}" as="formValue">{f:render(section: 'FieldValue', arguments: '{_all}')}</formvh:renderAllFormValues>\n</f:section>`,
+      `<f:section name="Main">\n  <formvh:renderAllFormValues\n    renderable="{form.formDefinition}"\n    as="formValue"\n  >\n    {f:render(section: 'FieldValue', arguments: '{_all}')}\n  </formvh:renderAllFormValues>\n</f:section>\n`,
+    );
+  });
+
   test("prettier-ignore still applies to ViewHelpers", async () => {
     await assertFormat(
       `<div>\n<!-- prettier-ignore -->\n<f:if condition="{a}"><b>keep   this</b></f:if>\n</div>`,

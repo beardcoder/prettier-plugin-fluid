@@ -218,12 +218,14 @@ as written, like `f:comment`. Add your own ViewHelpers of this kind:
 
 Every tag of the form `<ns:name>` is recognized as a ViewHelper, including
 your own (`<my:card.teaser>`) and third-party ones (`<v:variable.set>`).
-Only these core ViewHelpers are blocks by default:
+Only these core ViewHelpers (and those of EXT:form, with its usual `formvh`
+prefix) are blocks by default:
 
 `f:if` `f:then` `f:else` `f:for` `f:groupedFor` `f:switch` `f:case`
 `f:defaultCase` `f:section` `f:layout` `f:render` `f:variable` `f:alias`
 `f:argument` `f:slot` `f:fragment` `f:spaceless` `f:cache.*` `f:comment`
-`f:form` `f:asset.css` `f:asset.script`
+`f:form` `f:asset.css` `f:asset.script` `formvh:form`
+`formvh:renderAllFormValues` `formvh:renderFormValue` `formvh:renderRenderable`
 
 Custom ViewHelpers that wrap markup should usually be added:
 

@@ -62,9 +62,13 @@
 
 /**
  * ViewHelpers whose content is kept as written. `f:spaceless` often builds
- * strings (e.g. class lists) where added line breaks would change the output.
+ * strings (e.g. class lists) where added line breaks would change the output;
+ * `f:variable` takes its content, whitespace included, as the value.
  */
-export const DEFAULT_VERBATIM_VIEWHELPERS = Object.freeze(["f:spaceless"]);
+export const DEFAULT_VERBATIM_VIEWHELPERS = Object.freeze([
+  "f:spaceless",
+  "f:variable",
+]);
 
 /**
  * Tags from typo3/fluid and TYPO3 core that structure a template. `formvh` is
@@ -131,12 +135,17 @@ const TOKEN = {
   ignoreEnd: ignoreRangeMarker("end", "g"),
 };
 
-const DIRECTIVE_COMMENT =
-  /(?:<!--\s*(?:prettier-ignore(?!-(?:start|end)\b)|display:)[\s\S]*?-->|<f:comment\s*>\s*<!--\s*prettier-ignore\s*-->\s*<\/f:comment\s*>)\s*$/;
+const DIRECTIVE = String.raw`<!--\s*(?:prettier-ignore(?!-(?:start|end)\b)|display:)[\s\S]*?-->`;
+const DIRECTIVE_COMMENT = new RegExp(
+  String.raw`(?:${DIRECTIVE}|<f:comment\s*>\s*${DIRECTIVE}\s*</f:comment\s*>)\s*$`,
+);
 
-/** `<!-- prettier-ignore -->` that does not end up in the rendered HTML. */
-const FLUID_IGNORE_COMMENT =
-  /^<f:comment\s*>\s*<!--\s*prettier-ignore\s*-->\s*<\/f:comment\s*>$/;
+/**
+ * A directive such as `<!-- display: block -->` in `<f:comment>`, so it does
+ * not end up in the rendered HTML.
+ */
+const FLUID_DIRECTIVE_COMMENT =
+  /^<f:comment\s*>\s*<!--\s*(prettier-ignore(?:-attribute(?:\s[\s\S]*?)?)?|display:\s*[\w-]+)\s*-->\s*<\/f:comment\s*>$/;
 
 /** @param {string} text */
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -553,6 +562,8 @@ class Preprocessor {
   #nonce;
   #displayHint;
   #ignoreHint;
+  /** Hints for directives written in `<f:comment>`, by directive. */
+  /** @type {Map<string, string>} */ #directiveHints = new Map();
   /** Placeholders by source, so equal code (e.g. `<h{n}>…</h{n}>`) stays equal. */
   /** @type {Map<string, string>} */ #placeholders = new Map();
   /** @type {Fragment[]} */ #fragments = [];
@@ -638,7 +649,11 @@ class Preprocessor {
     const state = {
       source: this.#source,
       nonce: this.#nonce,
-      hints: [this.#displayHint, this.#ignoreHint],
+      hints: [
+        this.#displayHint,
+        this.#ignoreHint,
+        ...this.#directiveHints.values(),
+      ],
       fragments: this.#fragments,
       segments: this.#segments,
       rawTextTags: { count: 0, assets: new Map() },
@@ -791,17 +806,27 @@ class Preprocessor {
       }
     }
     const end = depth === 0 ? regex.lastIndex : this.#source.length;
-    const ignore = FLUID_IGNORE_COMMENT.test(
+    const directive = FLUID_DIRECTIVE_COMMENT.exec(
       this.#source.slice(this.#pos, end),
-    );
+    )?.[1];
     this.#replace(end, true);
-    if (ignore) {
+    if (directive) {
       // Prettier only sees the placeholder, so the directive is repeated
       // as a hint that applies to the next node. The line break keeps the
       // hint (removed when restoring) from gluing the next node to the comment.
-      this.#emit(`\n${this.#ignoreHint}`, this.#pos);
+      this.#emit(`\n${this.#directiveHint(directive)}`, this.#pos);
     }
     return true;
+  }
+
+  /** @param {string} directive */
+  #directiveHint(directive) {
+    let hint = this.#directiveHints.get(directive);
+    if (!hint) {
+      hint = createHint(this.#source, directive);
+      this.#directiveHints.set(directive, hint);
+    }
+    return hint;
   }
 
   #tag() {

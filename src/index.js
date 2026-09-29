@@ -131,7 +131,7 @@ export const options = {
     array: true,
     default: [{ value: [] }],
     description:
-      "Additional ViewHelpers whose element is kept exactly as written, like f:comment. f:spaceless always is. Supports * wildcards.",
+      "Additional ViewHelpers whose element is kept exactly as written, like f:comment. f:spaceless and f:variable always are. Supports * wildcards.",
   },
   fluidIndentRoot: {
     category: "Fluid",

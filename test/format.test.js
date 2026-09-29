@@ -71,6 +71,20 @@ describe("layout", () => {
     );
   });
 
+  test("directives inside f:comment apply to the next node", async () => {
+    await assertFormat(
+      `<div>\n<f:comment><!-- prettier-ignore-attribute --></f:comment>\n<div   class="a   b"  id="x"></div>\n<f:comment><!-- display: block --></f:comment>\n<my:thing>aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb</my:thing>\n<f:comment><!-- display: inline --></f:comment>\n<f:if condition="{a}">x</f:if>\n</div>`,
+      `<div>\n  <f:comment><!-- prettier-ignore-attribute --></f:comment>\n  <div class="a   b" id="x"></div>\n  <f:comment><!-- display: block --></f:comment>\n  <my:thing>\n    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n    bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n  </my:thing>\n  <f:comment><!-- display: inline --></f:comment>\n  <f:if condition="{a}">x</f:if>\n</div>\n`,
+    );
+  });
+
+  test("f:variable content is kept as written", async () => {
+    await assertFormat(
+      `<div>\n<f:variable name="classes">btn btn-primary btn-large some-other-class another-class yet-another-class</f:variable>\n<f:variable   name="x" value="{y}"/>\n</div>`,
+      `<div>\n  <f:variable name="classes">btn btn-primary btn-large some-other-class another-class yet-another-class</f:variable>\n  <f:variable name="x" value="{y}" />\n</div>\n`,
+    );
+  });
+
   test("prettier-ignore-start/end keeps the range as written", async () => {
     await assertFormat(
       `<div>\n<!-- prettier-ignore-start -->\n<div   class="a"  >keep   this</div>\n<f:if condition="{a}"><p>  y  </p></f:if>\n<!-- prettier-ignore-end -->\n<p>  x  </p>\n</div>`,

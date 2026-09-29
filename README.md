@@ -148,7 +148,7 @@ moves them to the front.
 | --------------------------- | ------------ | -------------------------------------------------------------------------------------------------------- |
 | `fluidBlockViewHelpers`     | `[]`         | Additional ViewHelpers laid out as blocks. Supports `*` wildcards.                                       |
 | `fluidInlineViewHelpers`    | `[]`         | ViewHelpers laid out inline even if they are blocks by default. Takes precedence.                        |
-| `fluidVerbatimViewHelpers`  | `[]`         | Additional ViewHelpers kept exactly as written, like `f:comment`. `f:spaceless` always is. Wildcards ok. |
+| `fluidVerbatimViewHelpers`  | `[]`         | Custom ViewHelpers kept exactly as written, like `f:comment`, `f:spaceless`, `f:variable`. Wildcards ok. |
 | `fluidIndentRoot`           | `true`       | Indent the content of the root `<fluid>` tag. See [root tag](#root-tag).                                 |
 | `fluidRootAttributePerLine` | `false`      | With `fluidIndentRoot: false`: put every attribute of the root tag on its own line.                      |
 | `fluidFinalNewline`         | `true`       | End the file with a line break. `false` omits it, e.g. for projects whose templates have none.           |
@@ -204,9 +204,10 @@ at all.
 ### Content that must not change
 
 Some ViewHelpers produce strings instead of markup, e.g. a class list built
-with `<f:if>` inside `<f:spaceless>`. Added line breaks or indentation would
-end up in that string. The content of `f:spaceless` is therefore kept exactly
-as written, like `f:comment`. Add your own ViewHelpers of this kind:
+with `<f:if>` inside `<f:spaceless>`, or the value of `<f:variable>` given as
+its content. Added line breaks or indentation would end up in that string. The
+content of `f:spaceless` and `f:variable` is therefore kept exactly as written,
+like `f:comment`. Add your own ViewHelpers of this kind:
 
 ```json
 {
@@ -257,7 +258,8 @@ Exclude a range, up to the end of the template if the end comment is missing:
 ```
 
 To keep these comments out of the rendered HTML, wrap them in `<f:comment>`:
-`<f:comment><!-- prettier-ignore --></f:comment>`.
+`<f:comment><!-- prettier-ignore --></f:comment>`. This also works for
+`prettier-ignore-attribute` and `display: …`.
 
 Exclude whole templates in `.prettierignore`, e.g. ones that are not valid
 HTML (see [limitations](#limitations)):

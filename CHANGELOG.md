@@ -7,6 +7,12 @@ breaking change is published automatically. Entries are generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by
 [conventional-changelog](https://github.com/conventional-changelog/conventional-changelog).
 
+## [0.9.0](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.8.0...v0.9.0) (2026-09-29)
+
+### Features
+
+- keep f:variable content as written and support all directives in f:comment ([2e7cd4c](https://github.com/beardcoder/prettier-plugin-fluid/commit/2e7cd4c11cab676805d1e44e9db3b460dec467c7))
+
 ## [0.8.0](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.7.0...v0.8.0) (2026-09-29)
 
 ### Features

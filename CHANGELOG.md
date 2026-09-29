@@ -7,6 +7,12 @@ breaking change is published automatically. Entries are generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by
 [conventional-changelog](https://github.com/conventional-changelog/conventional-changelog).
 
+## [0.7.0](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.6.0...v0.7.0) (2026-09-29)
+
+### Features
+
+- support prettier-ignore in f:comment and prettier-ignore-start/end ranges ([3248fb3](https://github.com/beardcoder/prettier-plugin-fluid/commit/3248fb36bf2458ace4630cba818276d886bc8160))
+
 ## [0.6.0](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.5.1...v0.6.0) (2026-09-28)
 
 ### Features

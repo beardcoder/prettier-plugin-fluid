@@ -245,6 +245,18 @@ Exclude a single element with a comment:
 <f:if condition="{a}"><b>kept   exactly as written</b></f:if>
 ```
 
+Exclude a range, up to the end of the template if the end comment is missing:
+
+```html
+<!-- prettier-ignore-start -->
+<p>kept exactly</p>
+<p>as written</p>
+<!-- prettier-ignore-end -->
+```
+
+To keep these comments out of the rendered HTML, wrap them in `<f:comment>`:
+`<f:comment><!-- prettier-ignore --></f:comment>`.
+
 Exclude whole templates in `.prettierignore`, e.g. ones that are not valid
 HTML (see [limitations](#limitations)):
 

@@ -53,6 +53,38 @@ describe("layout", () => {
     );
   });
 
+  test("prettier-ignore inside f:comment applies to the next node", async () => {
+    await assertFormat(
+      `<div>\n<f:comment><!-- prettier-ignore --></f:comment>\n<div   class="a"  >keep   this</div>\n<p>  x  </p>\n</div>`,
+      `<div>\n  <f:comment><!-- prettier-ignore --></f:comment>\n  <div   class="a"  >keep   this</div>\n  <p>x</p>\n</div>\n`,
+    );
+    await assertFormat(
+      `<div>\n<f:comment> <!-- prettier-ignore --> </f:comment>\n<f:if condition="{a}"><b>keep   this</b></f:if>\n</div>`,
+      `<div>\n  <f:comment> <!-- prettier-ignore --> </f:comment>\n  <f:if condition="{a}"><b>keep   this</b></f:if>\n</div>\n`,
+    );
+  });
+
+  test("prettier-ignore-start/end keeps the range as written", async () => {
+    await assertFormat(
+      `<div>\n<!-- prettier-ignore-start -->\n<div   class="a"  >keep   this</div>\n<f:if condition="{a}"><p>  y  </p></f:if>\n<!-- prettier-ignore-end -->\n<p>  x  </p>\n</div>`,
+      `<div>\n  <!-- prettier-ignore-start -->\n<div   class="a"  >keep   this</div>\n<f:if condition="{a}"><p>  y  </p></f:if>\n<!-- prettier-ignore-end -->\n  <p>x</p>\n</div>\n`,
+    );
+  });
+
+  test("prettier-ignore-start/end also works inside f:comment", async () => {
+    await assertFormat(
+      `<div>\n<f:comment><!-- prettier-ignore-start --></f:comment>\n<b   class="{a -> f:format.raw()}">keep   this</b>\n<f:comment><!-- prettier-ignore-end --></f:comment>\n<f:if condition="{a}"><p>  x  </p></f:if>\n</div>`,
+      `<div>\n  <f:comment><!-- prettier-ignore-start --></f:comment>\n<b   class="{a -> f:format.raw()}">keep   this</b>\n<f:comment><!-- prettier-ignore-end --></f:comment>\n  <f:if condition="{a}"><p>x</p></f:if>\n</div>\n`,
+    );
+  });
+
+  test("prettier-ignore-start without end ignores the rest", async () => {
+    await assertFormat(
+      `<p>  a  </p>\n<!-- prettier-ignore-start -->\n<p>  b  </p>\n`,
+      `<p>a</p>\n<!-- prettier-ignore-start -->\n<p>  b  </p>\n`,
+    );
+  });
+
   test("user display comments win over the default", async () => {
     await assertFormat(
       `<span><!-- display: inline --><f:if condition="{a}">x</f:if></span>`,

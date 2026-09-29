@@ -98,6 +98,21 @@ export const DEFAULT_BLOCK_VIEWHELPERS = Object.freeze([
 const SHORTHAND_CHAR = /[a-zA-Z0-9|\->_:=,.()*+^/%!?\s]/;
 const VIEWHELPER_NAME = "[a-zA-Z0-9.]*:[a-zA-Z0-9.]+";
 
+/**
+ * `<!-- prettier-ignore-start -->`, also wrapped in `<f:comment>` so it does
+ * not end up in the rendered HTML.
+ *
+ * @param {"start" | "end"} kind
+ * @param {string} flags
+ */
+function ignoreRangeMarker(kind, flags) {
+  const comment = `<!--\\s*prettier-ignore-${kind}\\s*-->`;
+  return new RegExp(
+    `${comment}|<f:comment\\s*>\\s*${comment}\\s*</f:comment\\s*>`,
+    flags,
+  );
+}
+
 const TOKEN = {
   htmlComment: /<!--[\s\S]*?(?:-->|$)/y,
   cdata: /<!\[CDATA\[[\s\S]*?(?:\]\]>|$)/y,
@@ -105,9 +120,16 @@ const TOKEN = {
   fluidCommentTags: /<(\/?)f:comment\s*(\/?)>/g,
   viewHelperTag: /<(\/?)([a-zA-Z0-9.]+):([a-zA-Z0-9.]+)/y,
   rawTextOpen: /<(script|style)\b/iy,
+  ignoreStart: ignoreRangeMarker("start", "y"),
+  ignoreEnd: ignoreRangeMarker("end", "g"),
 };
 
-const DIRECTIVE_COMMENT = /<!--\s*(?:prettier-ignore|display:)[\s\S]*?-->\s*$/;
+const DIRECTIVE_COMMENT =
+  /(?:<!--\s*(?:prettier-ignore(?!-(?:start|end)\b)|display:)[\s\S]*?-->|<f:comment\s*>\s*<!--\s*prettier-ignore\s*-->\s*<\/f:comment\s*>)\s*$/;
+
+/** `<!-- prettier-ignore -->` that does not end up in the rendered HTML. */
+const FLUID_IGNORE_COMMENT =
+  /^<f:comment\s*>\s*<!--\s*prettier-ignore\s*-->\s*<\/f:comment\s*>$/;
 
 /** @param {string} text */
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -594,7 +616,8 @@ class Preprocessor {
       const handled =
         (char === "{" && this.#shorthand()) ||
         (char === "<" &&
-          (this.#skip(TOKEN.htmlComment) ||
+          (this.#ignoreRange() ||
+            this.#skip(TOKEN.htmlComment) ||
             this.#skip(TOKEN.cdata) ||
             this.#fluidComment() ||
             this.#tag()));
@@ -725,6 +748,24 @@ class Preprocessor {
     );
   }
 
+  /**
+   * Prettier's `html` parser has no range ignore, so everything from
+   * `prettier-ignore-start` to `prettier-ignore-end` (or the end of the
+   * template) is kept as written.
+   */
+  #ignoreRange() {
+    const start = this.#matchAt(TOKEN.ignoreStart);
+    if (!start) {
+      return false;
+    }
+    const regex = TOKEN.ignoreEnd;
+    regex.lastIndex = this.#pos + start[0].length;
+    const end = regex.exec(this.#source)
+      ? regex.lastIndex
+      : this.#source.length;
+    return this.#replace(end, true);
+  }
+
   #fluidComment() {
     const open = this.#matchAt(TOKEN.fluidComment);
     if (!open) {
@@ -742,10 +783,18 @@ class Preprocessor {
         depth += match[1] ? -1 : 1;
       }
     }
-    return this.#replace(
-      depth === 0 ? regex.lastIndex : this.#source.length,
-      true,
+    const end = depth === 0 ? regex.lastIndex : this.#source.length;
+    const ignore = FLUID_IGNORE_COMMENT.test(
+      this.#source.slice(this.#pos, end),
     );
+    this.#replace(end, true);
+    if (ignore) {
+      // Prettier only sees the placeholder, so the directive is repeated
+      // as a hint that applies to the next node. The line break keeps the
+      // hint (removed when restoring) from gluing the next node to the comment.
+      this.#emit(`\n${this.#ignoreHint}`, this.#pos);
+    }
+    return true;
   }
 
   #tag() {

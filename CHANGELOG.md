@@ -7,6 +7,12 @@ breaking change is published automatically. Entries are generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by
 [conventional-changelog](https://github.com/conventional-changelog/conventional-changelog).
 
+## [0.11.0](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.10.0...v0.11.0) (2026-09-30)
+
+### Features
+
+- add fluidArraySpacingInStrings to format arrays in argument strings ([9c50cb9](https://github.com/beardcoder/prettier-plugin-fluid/commit/9c50cb969ae8aba63708aa4566dedf52996bb96b))
+
 ## [0.10.0](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.9.2...v0.10.0) (2026-09-30)
 
 ### Features

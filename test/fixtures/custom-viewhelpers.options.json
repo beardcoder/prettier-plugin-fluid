@@ -1,1 +1,7 @@
-{ "fluidBlockViewHelpers": ["my:grid", "my:card.*"] }
+{
+  "plugins": [
+    "prettier-plugin-organize-attributes",
+    "prettier-plugin-tailwindcss"
+  ],
+  "fluidBlockViewHelpers": ["my:grid", "my:card.*"]
+}

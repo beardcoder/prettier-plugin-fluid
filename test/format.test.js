@@ -12,18 +12,51 @@ const ALL_PLUGINS = [
   "prettier-plugin-tailwindcss",
 ];
 
-// Recent prettier-plugin-tailwindcss releases fail on old Prettier 3.x even
-// for plain HTML; CI also runs the suite against the oldest supported Prettier.
-const skipTailwind = await prettier
-  .format("<div></div>", {
-    parser: "html",
-    plugins: ["prettier-plugin-tailwindcss"],
-  })
-  .then(
-    () => false,
-    () =>
-      `prettier-plugin-tailwindcss does not support Prettier ${prettier.version}`,
+/** @param {string} version */
+const parseVersion = (version) => version.split(/[.-]/, 3).map(Number);
+
+/**
+ * @param {string} version
+ * @param {string} minimum
+ */
+function isAtLeast(version, minimum) {
+  const a = parseVersion(version);
+  const b = parseVersion(minimum);
+  for (let i = 0; i < 3; i++) {
+    if (a[i] !== b[i]) {
+      return a[i] > b[i];
+    }
+  }
+  return true;
+}
+
+/**
+ * prettier-plugin-tailwindcss 0.8 declares `prettier: ^3.0`, but fails with a
+ * TypeError on Prettier 3.0.0 to 3.6.2 even for plain HTML (checked with
+ * 0.8.1). CI also runs the suite against the oldest supported Prettier. Any
+ * other failure is a real error and must fail the tests.
+ *
+ * @param {string} prettierVersion
+ * @param {string} tailwindVersion
+ * @returns {string | false} Why the Tailwind tests are skipped.
+ */
+function tailwindIncompatibility(prettierVersion, tailwindVersion) {
+  const known =
+    tailwindVersion.startsWith("0.8.") && !isAtLeast(prettierVersion, "3.7.0");
+  return (
+    known &&
+    `prettier-plugin-tailwindcss ${tailwindVersion} needs Prettier 3.7, not ${prettierVersion}`
   );
+}
+
+const tailwindPackage = new URL(
+  "../package.json",
+  import.meta.resolve("prettier-plugin-tailwindcss"),
+);
+const skipTailwind = tailwindIncompatibility(
+  prettier.version,
+  JSON.parse(await readFile(tailwindPackage, "utf8")).version,
+);
 
 const format = (source, options = {}) =>
   prettier.format(source, { parser: "fluid", plugins: [fluid], ...options });
@@ -439,6 +472,120 @@ describe("fluidIndentRoot: false", () => {
       return true;
     });
   });
+
+  test("keeps a DOCTYPE and comments before the root", async () => {
+    for (const doctype of ["<!DOCTYPE html>", "<!doctype html>"]) {
+      await assertFormat(
+        `${doctype}\n<!-- c -->\n<html data-namespace-typo3-fluid="true"><f:section name="Main"><p>x</p></f:section></html>`,
+        `${doctype}\n<!-- c -->\n<html data-namespace-typo3-fluid="true">\n\n<f:section name="Main"><p>x</p></f:section>\n\n</html>\n`,
+        options,
+      );
+    }
+  });
+
+  test("the namespace attribute must be exactly true", async () => {
+    for (const value of [`'true'`, "true"]) {
+      await assertFormat(
+        `<div data-namespace-typo3-fluid=${value}>\n<p>x</p>\n</div>`,
+        `<div data-namespace-typo3-fluid="true">\n\n<p>x</p>\n\n</div>\n`,
+        options,
+      );
+    }
+    for (const tag of [
+      `<div data-namespace-typo3-fluid="trueish">`,
+      `<div data-namespace-typo3-fluid="false">`,
+      `<div title=' data-namespace-typo3-fluid="true"'>`,
+      `<div data-x="a data-namespace-typo3-fluid=true">`,
+    ]) {
+      const source = `${tag}\n<p>x</p>\n</div>`;
+      const output = await format(source, options);
+      assert.equal(output, await format(source));
+      assert.match(output, /\n {2}<p>x<\/p>\n/);
+    }
+  });
+
+  describe("errors point at the original position", () => {
+    const positionOf = (source, needle) => {
+      const before = source.slice(0, source.indexOf(needle));
+      const lines = before.split("\n");
+      return { line: lines.length, column: lines.at(-1).length + 1 };
+    };
+    const assertErrorAt = async (source, expected, extra = {}) => {
+      await assert.rejects(
+        format(source, { ...options, ...extra }),
+        (error) => {
+          assert.deepEqual(error.loc.start, expected);
+          assert.match(
+            stripVTControlCharacters(error.message),
+            new RegExp(`\\(${expected.line}:${expected.column}\\)`),
+          );
+          return true;
+        },
+      );
+    };
+
+    test("in the content", async () => {
+      await assertErrorAt(`<fluid><div></span></fluid>`, {
+        line: 1,
+        column: 13,
+      });
+    });
+
+    test("in the content after comments and a multi-line opening tag", async () => {
+      const source = `<!-- a -->\n<!-- b --><fluid\n  data-namespace-typo3-fluid="true">  <div>\n{x}</span></fluid>`;
+      await assertErrorAt(source, positionOf(source, "</span>"));
+      const first = `<!-- a -->\n<fluid\n  data-namespace-typo3-fluid="true">  <div></span></fluid>`;
+      await assertErrorAt(first, positionOf(first, "</span>"));
+    });
+
+    test("in the content, with CRLF", async () => {
+      const source = `<!-- a -->\n<fluid\n  data-namespace-typo3-fluid="true">  <div></span>\n</fluid>`;
+      await assertErrorAt(
+        source.replaceAll("\n", "\r\n"),
+        positionOf(source, "</span>"),
+        { endOfLine: "crlf" },
+      );
+    });
+
+    test("in the opening tag", async () => {
+      const source = `<!-- a -->\n  <!-- b --> <fluid data-namespace-typo3-fluid="true" <b>\n<p>x</p>\n</fluid>`;
+      await assertErrorAt(source, positionOf(source, "<fluid"));
+      await assertErrorAt(
+        source.replaceAll("\n", "\r\n"),
+        positionOf(source, "<fluid"),
+        { endOfLine: "crlf" },
+      );
+    });
+
+    test("in a multi-line opening tag", async () => {
+      const tag = `<fluid\n  data-namespace-typo3-fluid="true"\n  a="&#xzz;">`;
+      // Where the html parser puts the error in the tag on its own.
+      const inTag = await prettier
+        .format(`${tag}</fluid>`, { parser: "html" })
+        .then(assert.fail, (error) => error.loc);
+      assert.ok(inTag.end.line > 1);
+      const source = `<!-- a -->\n  <!-- b --> ${tag}\n<p>x</p>\n</fluid>`;
+      const start = positionOf(source, "<fluid");
+      for (const [text, extra] of [
+        [source, {}],
+        [source.replaceAll("\n", "\r\n"), { endOfLine: "crlf" }],
+      ]) {
+        await assert.rejects(
+          format(text, { ...options, ...extra }),
+          (error) => {
+            assert.deepEqual(error.loc, {
+              start,
+              end: {
+                line: start.line + inTag.end.line - 1,
+                column: inTag.end.column,
+              },
+            });
+            return true;
+          },
+        );
+      }
+    });
+  });
 });
 
 describe("f:asset.css / f:asset.script", () => {
@@ -479,6 +626,80 @@ describe("f:asset.css / f:asset.script", () => {
 </div>
 `;
     await assertFormat(source, source);
+  });
+
+  test("escaped quotes in arguments", async () => {
+    await assertFormat(
+      `<f:asset.script identifier="a\\"b">let x=1</f:asset.script>\n<f:asset.css identifier="a\\"b" media="x">.a { margin: 0; }</f:asset.css>`,
+      `<f:asset.script identifier="a\\"b">
+  let x = 1;
+</f:asset.script>
+<f:asset.css identifier="a\\"b" media="x">
+  .a {
+    margin: 0;
+  }
+</f:asset.css>
+`,
+    );
+  });
+
+  test("arguments follow fluidArraySpacing like other ViewHelpers", async () => {
+    const value = `{async: 1,defer:'{a: 1}'}`;
+    const cases = [
+      ["preserve", false],
+      ["always", false],
+      ["never", false],
+      ["always", true],
+      ["never", true],
+    ];
+    for (const [fluidArraySpacing, fluidArraySpacingInStrings] of cases) {
+      const options = {
+        fluidArraySpacing,
+        fluidArraySpacingInStrings,
+        printWidth: 120,
+      };
+      const reference = await format(
+        `<f:render additionalAttributes="${value}" />`,
+        options,
+      );
+      const expected = /additionalAttributes="([^"]*)"/.exec(reference)[1];
+      if (fluidArraySpacing === "preserve") {
+        assert.equal(expected, value);
+      } else {
+        assert.notEqual(expected, value);
+      }
+      await assertFormat(
+        `<f:asset.script identifier="a" additionalAttributes="${value}">let x=1</f:asset.script>`,
+        `<f:asset.script identifier="a" additionalAttributes="${expected}">\n  let x = 1;\n</f:asset.script>\n`,
+        options,
+      );
+      await assertFormat(
+        `<f:asset.css identifier="a" additionalAttributes="${value}">.a { margin: 0; }</f:asset.css>`,
+        `<f:asset.css identifier="a" additionalAttributes="${expected}">\n  .a {\n    margin: 0;\n  }\n</f:asset.css>\n`,
+        options,
+      );
+      await assertFormat(
+        `<f:asset.css identifier="a" href="a.css" additionalAttributes="${value}" />`,
+        `<f:asset.css identifier="a" href="a.css" additionalAttributes="${expected}" />\n`,
+        options,
+      );
+      // Elements kept as written keep their arguments, too.
+      for (const verbatim of [
+        `<f:asset.script identifier="a" additionalAttributes="${value}">let x = '{b}';</f:asset.script>\n`,
+        `<f:asset.script identifier="a\\"b" additionalAttributes="${value}"><![CDATA[ foo( 1 ) ]]></f:asset.script>\n`,
+      ]) {
+        await assertFormat(verbatim, verbatim, options);
+      }
+      // Attributes of plain HTML tags are no ViewHelper arguments.
+      const html = `<f:asset.script identifier="a">let x = 1;</f:asset.script>\n<script data-x="${value}">\n  let y = 1;\n</script>\n<style data-x="${value}"></style>\n`;
+      assert.equal(
+        await format(html, options),
+        html.replace(
+          `<f:asset.script identifier="a">let x = 1;</f:asset.script>`,
+          `<f:asset.script identifier="a">\n  let x = 1;\n</f:asset.script>`,
+        ),
+      );
+    }
   });
 });
 
@@ -553,6 +774,76 @@ describe("robustness", () => {
     await assertFormat(source, source);
   });
 
+  describe("script/style bodies with Fluid code stay protected after directives", () => {
+    const bodies = {
+      script: `const x = '{f:if(condition: a, then: \\'yes\\', else: \\'no\\')}';`,
+      style: `.a { content: "{f:if(condition: a, then: \\'yes\\')}" }`,
+    };
+    const directives = [
+      "display: block",
+      "display: inline",
+      "prettier-ignore-attribute",
+    ];
+    const pluginSets = [
+      [fluid],
+      [fluid, "prettier-plugin-organize-attributes"],
+      ...(skipTailwind ? [] : [ALL_PLUGINS]),
+    ];
+
+    for (const directive of directives) {
+      for (const comment of [
+        `<!-- ${directive} -->`,
+        `<f:comment><!-- ${directive} --></f:comment>`,
+      ]) {
+        test(comment, async () => {
+          for (const plugins of pluginSets) {
+            for (const [tag, body] of Object.entries(bodies)) {
+              const element = `<${tag} class="b a">${body}</${tag}>`;
+              const source = `<div>\n${comment}\n${element}\n</div>\n`;
+              const output = await format(source, { plugins });
+              assert.ok(
+                output.includes(`${comment}\n  ${element}\n`),
+                `body must be kept as written:\n${output}`,
+              );
+              assert.equal(await format(output, { plugins }), output);
+            }
+          }
+        });
+      }
+    }
+
+    test("the example from the analysis is kept exactly", async () => {
+      const source = `<!-- display: block -->\n<script>${bodies.script}</script>\n`;
+      await assertFormat(source, source);
+    });
+
+    test("multi-line bodies keep their lines, also with CRLF", async () => {
+      const body = `\n  var a = '{f:if(condition: a, then: \\'b\\')}';\n      var  c = 1;\n`;
+      const source = `<div>\n<!-- display: block -->\n<script>${body}</script>\n</div>\n`;
+      const expected = `<div>\n  <!-- display: block -->\n  <script>${body}</script>\n</div>\n`;
+      await assertFormat(source, expected);
+      const crlf = (text) => text.replaceAll("\n", "\r\n");
+      await assertFormat(crlf(source), crlf(expected), { endOfLine: "crlf" });
+    });
+
+    test("prettier-ignore keeps the whole element", async () => {
+      for (const comment of [
+        "<!-- prettier-ignore -->",
+        "<f:comment><!-- prettier-ignore --></f:comment>",
+      ]) {
+        const source = `<div>\n  ${comment}\n  <script   type="module">${bodies.script}</script>\n</div>\n`;
+        await assertFormat(source, source);
+      }
+    });
+
+    test("bodies without Fluid code are still formatted", async () => {
+      await assertFormat(
+        `<!-- display: block -->\n<script>let a=1</script>\n<f:comment><!-- prettier-ignore-attribute --></f:comment>\n<style>p{margin:0 ;}</style>`,
+        `<!-- display: block -->\n<script>\n  let a = 1;\n</script>\n<f:comment><!-- prettier-ignore-attribute --></f:comment>\n<style>\n  p {\n    margin: 0;\n  }\n</style>\n`,
+      );
+    });
+  });
+
   test("script/style bodies without Fluid code are formatted", async () => {
     await assertFormat(
       `<script>let a=1</script>\n<style>p{margin:0 ;}</style>`,
@@ -618,7 +909,110 @@ describe("robustness", () => {
   });
 });
 
+describe("every occurrence of Fluid code is restored", () => {
+  const placeholderOf = (html, state) =>
+    html.match(new RegExp(`${state.nonce}\\d+_*${state.nonce}`))[0];
+
+  test("refuses to drop one of several equal expressions", () => {
+    const { html, state } = preprocess(`<p>{x} {x}</p>`);
+    const placeholder = placeholderOf(html, state);
+    assert.throws(
+      () => restore(html.replace(placeholder, ""), state),
+      /prettier-plugin-fluid: formatting dropped Fluid code.*\{x\}/,
+    );
+  });
+
+  test("refuses to duplicate Fluid code", () => {
+    const { html, state } = preprocess(`<p>{x} {x}</p>`);
+    const placeholder = placeholderOf(html, state);
+    assert.throws(
+      () => restore(html.replace(placeholder, placeholder.repeat(2)), state),
+      /prettier-plugin-fluid: formatting duplicated Fluid code.*\{x\}/,
+    );
+    const comment = preprocess(`<f:comment>{x}</f:comment>`);
+    assert.throws(
+      () => restore(comment.html.repeat(2), comment.state),
+      /prettier-plugin-fluid: formatting duplicated Fluid code.*<f:comment>/,
+    );
+  });
+
+  test("refuses unknown placeholders", () => {
+    const { html, state } = preprocess(`<p class="{a}">{a}</p>`);
+    const unknown = `${state.nonce}99${state.nonce}`;
+    for (const changed of [
+      `${html}${unknown}`,
+      `${html}<!--${unknown}-->`,
+      html.replace('class="', `class="${unknown} `),
+    ]) {
+      assert.throws(
+        () => restore(changed, state),
+        /prettier-plugin-fluid: formatting produced unknown placeholders.*qz99qz/,
+      );
+    }
+  });
+
+  test("refuses comment placeholders taken out of their comment", () => {
+    const { html, state } = preprocess(`<div><f:comment>x</f:comment></div>`);
+    assert.throws(
+      () => restore(html.replace(/<!--|-->/g, ""), state),
+      /prettier-plugin-fluid: formatting dropped Fluid code.*<f:comment>x.*took Fluid code out of its HTML comment/,
+    );
+  });
+
+  test("an HTML plugin that drops a placeholder makes formatting fail", async () => {
+    const { parsers } = await import("prettier/plugins/html");
+    const dropping = {
+      parsers: {
+        html: {
+          ...parsers.html,
+          preprocess: (text) => text.replace(/qz\d+_*qz/, ""),
+        },
+      },
+    };
+    await assert.rejects(
+      format(`<p>{x} {x}</p>`, { plugins: [fluid, dropping] }),
+      /prettier-plugin-fluid: formatting dropped Fluid code.*\{x\}/,
+    );
+  });
+
+  test("repetitions, dynamic tags, comments and attributes stay intact", async () => {
+    const source = `<div class="{x}" title="{x}" data-x="{x}">
+  <h{level} class="{x}">{x} {x}</h{level}>
+  <f:comment>{x}</f:comment>
+  <f:comment>{x}</f:comment>
+  <!-- {x} -->
+  <p>{x}{x}</p>
+</div>
+`;
+    await assertFormat(source, source);
+    await assertFormat(source, source, {
+      plugins: [fluid, "prettier-plugin-organize-attributes"],
+    });
+  });
+});
+
 describe("other plugins", () => {
+  test("Tailwind is only skipped for known incompatible versions", () => {
+    for (const prettierVersion of ["3.0.0", "3.6.2"]) {
+      assert.match(
+        tailwindIncompatibility(prettierVersion, "0.8.1"),
+        /needs Prettier 3\.7/,
+      );
+    }
+    for (const [prettierVersion, tailwindVersion] of [
+      ["3.7.0", "0.8.1"],
+      ["3.9.9", "0.8.1"],
+      ["4.0.0", "0.8.1"],
+      ["3.0.0", "0.7.0"],
+      ["3.0.0", "0.9.0"],
+    ]) {
+      assert.equal(
+        tailwindIncompatibility(prettierVersion, tailwindVersion),
+        false,
+      );
+    }
+  });
+
   test("prettier-plugin-organize-attributes", async () => {
     await assertFormat(
       `<f:link.page pageUid="{uid}" class="btn" additionalAttributes="{rel: 'x'}">x</f:link.page>`,
@@ -636,6 +1030,12 @@ describe("other plugins", () => {
       `<div class="{f:if(condition: a, then: 'x')} flex p-4"></div>\n`,
       { plugins: ALL_PLUGINS },
     );
+    // Duplicate classes are removed, but not repeated Fluid code.
+    await assertFormat(
+      `<div class="{x} p-4 {x} flex p-4"></div>`,
+      `<div class="{x} {x} flex p-4"></div>\n`,
+      { plugins: ALL_PLUGINS },
+    );
     await assertFormat(
       `<div class="p-4 flex {(a && b) ? 'active   big' : 'hidden'}"></div>`,
       `<div class="{(a && b) ? 'active   big' : 'hidden'} flex p-4"></div>\n`,
@@ -645,8 +1045,9 @@ describe("other plugins", () => {
 });
 
 // Fixtures: test/fixtures/<name>.input.html → <name>.output.html, formatted
-// with all plugins and the optional <name>.options.json.
-// Regenerate outputs with `UPDATE=1 npm test`.
+// with this plugin and the optional <name>.options.json. Its "plugins" lists
+// further plugins the fixture is an integration test for; fixtures without
+// them check this plugin alone. Regenerate outputs with `UPDATE=1 npm test`.
 describe("fixtures", async () => {
   const dir = new URL("fixtures/", import.meta.url);
   const inputs = (await readdir(dir)).filter((file) =>
@@ -654,21 +1055,27 @@ describe("fixtures", async () => {
   );
 
   for (const input of inputs) {
-    test(input.replace(".input.html", ""), { skip: skipTailwind }, async () => {
+    const optionsUrl = new URL(
+      input.replace(".input.html", ".options.json"),
+      dir,
+    );
+    const { plugins = [], ...options } = JSON.parse(
+      await readFile(optionsUrl, "utf8").catch(() => "{}"),
+    );
+    const skip =
+      plugins.includes("prettier-plugin-tailwindcss") && skipTailwind;
+    test(input.replace(".input.html", ""), { skip }, async () => {
       const source = await readFile(new URL(input, dir), "utf8");
       const outputUrl = new URL(input.replace(".input.", ".output."), dir);
-      const optionsUrl = new URL(
-        input.replace(".input.html", ".options.json"),
-        dir,
-      );
-      const options = {
-        plugins: ALL_PLUGINS,
-        ...JSON.parse(await readFile(optionsUrl, "utf8").catch(() => "{}")),
-      };
+      const fixtureOptions = { ...options, plugins: [fluid, ...plugins] };
       if (process.env.UPDATE) {
-        await writeFile(outputUrl, await format(source, options));
+        await writeFile(outputUrl, await format(source, fixtureOptions));
       }
-      await assertFormat(source, await readFile(outputUrl, "utf8"), options);
+      await assertFormat(
+        source,
+        await readFile(outputUrl, "utf8"),
+        fixtureOptions,
+      );
     });
   }
 });

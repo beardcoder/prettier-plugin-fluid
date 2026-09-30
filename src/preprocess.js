@@ -42,6 +42,8 @@
  * @property {boolean} comment Whether the placeholder is wrapped in `<!-- -->`.
  * @property {number} indent Leading whitespace of the source line the code
  *   starts on; continuation lines of expressions move with the new indent.
+ * @property {number} count How often the placeholder occurs in the HTML; equal
+ *   code shares one placeholder.
  *
  * @typedef {object} Segment Code the preprocessor replaced or inserted.
  * @property {number} htmlStart
@@ -150,8 +152,15 @@ const TOKEN = {
 };
 
 const DIRECTIVE = String.raw`<!--\s*(?:prettier-ignore(?!-(?:start|end)\b)|display:)[\s\S]*?-->`;
-const DIRECTIVE_COMMENT = new RegExp(
-  String.raw`(?:${DIRECTIVE}|<f:comment\s*>\s*${DIRECTIVE}\s*</f:comment\s*>)\s*$`,
+/** @param {string} directive */
+const directiveBefore = (directive) =>
+  new RegExp(
+    String.raw`(?:${directive}|<f:comment\s*>\s*${directive}\s*</f:comment\s*>)\s*$`,
+  );
+const DIRECTIVE_COMMENT = directiveBefore(DIRECTIVE);
+// Prettier matches `prettier-ignore` exactly; `-attribute` keeps the content.
+const IGNORE_COMMENT = directiveBefore(
+  String.raw`<!--\s*prettier-ignore\s*-->`,
 );
 
 /**
@@ -222,7 +231,7 @@ const VIEWHELPER_TAG_ANYWHERE = new RegExp(`</?${VIEWHELPER_NAME}`);
  *
  * @param {string} text
  */
-function containsFluid(text) {
+export function containsFluid(text) {
   if (VIEWHELPER_TAG_ANYWHERE.test(text)) {
     return true;
   }
@@ -621,7 +630,8 @@ class Preprocessor {
   /** Hints for directives written in `<f:comment>`, by directive. */
   /** @type {Map<string, string>} */ #directiveHints = new Map();
   /** Placeholders by code, so equal code (e.g. `<h{n}>…</h{n}>`) stays equal. */
-  /** @type {Map<string, string>} */ #placeholders = new Map();
+  /** @type {Map<string, { placeholder: string, fragment: Fragment }>} */
+  #placeholders = new Map();
   /** Replacement for `ns:` in tag names, by namespace. */
   /** @type {Map<string, string>} */ #tagPrefixes = new Map();
   /** @type {Fragment[]} */ #fragments = [];
@@ -774,14 +784,16 @@ class Preprocessor {
     const code = transform ? transform(original) : original;
     const existing = comment ? undefined : this.#placeholders.get(code);
     if (existing) {
-      this.#emit(existing, end);
+      existing.fragment.count++;
+      this.#emit(existing.placeholder, end);
       return true;
     }
     const lineStart = this.#source.lastIndexOf("\n", this.#pos - 1) + 1;
     const indent = /^[ \t]*/.exec(this.#source.slice(lineStart, this.#pos))?.[0]
       .length;
-    const id =
-      this.#fragments.push({ source: code, comment, indent: indent ?? 0 }) - 1;
+    /** @type {Fragment} */
+    const fragment = { source: code, comment, indent: indent ?? 0, count: 1 };
+    const id = this.#fragments.push(fragment) - 1;
     const core = `${this.#nonce}${id}`;
     // Pad to the code's width so Prettier's line fitting stays realistic.
     // Multi-line code must not share a line with other attributes, so it is
@@ -796,7 +808,7 @@ class Preprocessor {
     );
     const placeholder = `${core}${padding}${this.#nonce}`;
     if (!comment) {
-      this.#placeholders.set(code, placeholder);
+      this.#placeholders.set(code, { placeholder, fragment });
     }
 
     this.#emit(comment ? `<!--${placeholder}-->` : placeholder, end);
@@ -939,8 +951,7 @@ class Preprocessor {
       // the HTML parser would put every child into the `f` namespace, where
       // e.g. `<input>` is no void element and `<p>` has no implied end tag.
       if (!slash) {
-        this.#argumentsEnd = findTagEnd(this.#source, this.#pos);
-        this.#findEscapedValues();
+        this.#startArguments();
       }
       const renamed = `<${slash}${this.#tagPrefix(namespace)}${name}`;
       this.#emit(renamed, this.#pos + tag.length);
@@ -955,10 +966,13 @@ class Preprocessor {
       close.lastIndex = tagEnd;
       const end = close.exec(this.#source)?.index ?? this.#source.length;
       this.#rawTextBody = { start: tagEnd, end };
-      // Keep script/style bodies with Fluid code exactly as written.
+      // Keep script/style bodies with Fluid code exactly as written. Prettier
+      // only looks at the previous comment, so this hint takes the place of
+      // `display: …` and `prettier-ignore-attribute`, which keep applying to
+      // the hint and change nothing a full ignore does not keep anyway.
       if (
         containsFluid(this.#source.slice(tagEnd, end)) &&
-        !this.#followsDirective()
+        !this.#followsDirective(IGNORE_COMMENT)
       ) {
         this.#emit(this.#ignoreHint, this.#pos);
       }
@@ -999,6 +1013,7 @@ class Preprocessor {
       // Not valid CSS/JavaScript; keep it exactly as written.
       return this.#replace(element.end, true);
     }
+    this.#startArguments();
     this.#emit(`<${htmlName}`, end);
     this.#assetTags.set(
       /** @type {Segment} */ (this.#segments.at(-1)).htmlStart,
@@ -1007,6 +1022,12 @@ class Preprocessor {
     this.#assetCloses.set(element.bodyEnd, htmlName);
     this.#rawTextBody = { start: element.bodyStart, end: element.bodyEnd };
     return true;
+  }
+
+  /** The attributes of the ViewHelper tag at the current position are arguments. */
+  #startArguments() {
+    this.#argumentsEnd = findTagEnd(this.#source, this.#pos);
+    this.#findEscapedValues();
   }
 
   /**
@@ -1051,10 +1072,14 @@ class Preprocessor {
     return prefix;
   }
 
-  /** `<!-- prettier-ignore -->` / `<!-- display: x -->` must stay adjacent to their tag. */
-  #followsDirective() {
+  /**
+   * `<!-- prettier-ignore -->` / `<!-- display: x -->` must stay adjacent to their tag.
+   *
+   * @param {RegExp} [directive]
+   */
+  #followsDirective(directive = DIRECTIVE_COMMENT) {
     const before = this.#source.slice(Math.max(0, this.#pos - 500), this.#pos);
-    return DIRECTIVE_COMMENT.test(before);
+    return directive.test(before);
   }
 }
 
@@ -1078,7 +1103,13 @@ export function restore(formatted, state) {
     "g",
   );
   const placeholder = new RegExp(`(<!--)?${nonce}(\\d+)_*${nonce}(-->)?`, "g");
-  const restored = new Set();
+  // Equal code shares a placeholder, so compare how often each one occurs.
+  const counts = fragments.map(() => 0);
+  /** @type {string[]} */
+  const unknown = [];
+  /** Comment placeholders Prettier took out of their `<!-- -->`. */
+  /** @type {string[]} */
+  const unwrapped = [];
 
   const text = fixAttributeQuotes(
     restoreAssetTags(
@@ -1092,24 +1123,49 @@ export function restore(formatted, state) {
   );
   const result = text.replace(placeholder, (match, open, id, close, offset) => {
     const fragment = fragments[Number(id)];
+    if (!fragment) {
+      unknown.push(match);
+      return match;
+    }
     if (!fragment.comment) {
-      restored.add(Number(id));
+      counts[Number(id)]++;
       const source = reindent(fragment, lineIndent(text, offset));
       return `${open ?? ""}${source}${close ?? ""}`;
     }
     if (open && close) {
-      restored.add(Number(id));
+      counts[Number(id)]++;
       return fragment.source;
     }
+    unwrapped.push(fragment.source);
     return match;
   });
 
-  if (restored.size !== fragments.length) {
-    const lost = fragments
-      .filter((_, id) => !restored.has(id))
+  /** @type {string[]} */
+  const problems = [];
+  /** @param {string} problem @param {string[]} codes */
+  const report = (problem, codes) => {
+    if (codes.length > 0) {
+      problems.push(`${problem}: ${codes.join(", ")}`);
+    }
+  };
+  /** @param {(count: number, expected: number) => boolean} test */
+  const sources = (test) =>
+    fragments
+      .filter(({ count }, id) => test(counts[id], count))
       .map(({ source }) => source);
+  report(
+    "dropped Fluid code",
+    sources((count, expected) => count < expected),
+  );
+  report(
+    "duplicated Fluid code",
+    sources((count, expected) => count > expected),
+  );
+  report("produced unknown placeholders", unknown);
+  report("took Fluid code out of its HTML comment", unwrapped);
+  if (problems.length > 0) {
     throw new Error(
-      `prettier-plugin-fluid: formatting dropped Fluid code, refusing to continue: ${lost.join(", ")}`,
+      `prettier-plugin-fluid: formatting ${problems.join("; ")}. Refusing to continue.`,
     );
   }
   return result;
@@ -1360,8 +1416,9 @@ function fixAttributeQuotes(text, { source, nonce, fragments }) {
     const other = quote === '"' ? "'" : '"';
     const full = value.replace(
       placeholder,
-      (/** @type {string} */ _, /** @type {string} */ id) =>
-        fragments[Number(id)].source,
+      (/** @type {string} */ match, /** @type {string} */ id) =>
+        // Unknown placeholders are reported by `restore()`.
+        fragments[Number(id)]?.source ?? match,
     );
     // Backslash-escaped quotes are Fluid syntax (`"{a: \\"b\\"}"`) and fine.
     const hasRaw = (/** @type {string} */ text, /** @type {string} */ char) =>
@@ -1418,10 +1475,15 @@ function toPosition(text, offset) {
  * for parse errors. Positions inside a placeholder map to its start.
  *
  * @param {Position} position
- * @param {{ html: string, source: string, state: RestoreState }} context
+ * @param {{ html: string, source: string, state: RestoreState, origin?: Origin }} context
  * @returns {Position}
+ *
+ * @typedef {object} Origin Where `source` is taken from.
+ * @property {string} text The whole template.
+ * @property {number} offset Position of `source` in it.
  */
-export function toSourcePosition(position, { html, source, state }) {
+export function toSourcePosition(position, { html, source, state, origin }) {
+  const { text, offset: start } = origin ?? { text: source, offset: 0 };
   const offset = toOffset(html, position);
   let delta = 0;
   for (const segment of state.segments) {
@@ -1429,11 +1491,11 @@ export function toSourcePosition(position, { html, source, state }) {
       break;
     }
     if (offset < segment.htmlEnd) {
-      return toPosition(source, segment.sourceStart);
+      return toPosition(text, start + segment.sourceStart);
     }
     delta = segment.sourceEnd - segment.htmlEnd;
   }
-  return toPosition(source, offset + delta);
+  return toPosition(text, start + Math.min(offset + delta, source.length));
 }
 
 /**
@@ -1471,17 +1533,57 @@ export const revealPlaceholders = (text, { nonce, namespaces, fragments }) =>
   );
 
 /**
+ * The value of an attribute of an opening tag, or undefined.
+ *
+ * @param {string} tag From `<` to `>`.
+ * @param {string} name Lowercase.
+ */
+function getAttribute(tag, name) {
+  const attribute = /\s*([^\s"'>/=]+)\s*(=\s*)?/y;
+  let i = /^<[^\s/>]*/.exec(tag)?.[0].length ?? 0;
+  while (i < tag.length) {
+    const match = matchSticky(attribute, tag, i);
+    if (!match) {
+      i++;
+      continue;
+    }
+    i += match[0].length;
+    let value = "";
+    if (match[2]) {
+      if (tag[i] === '"' || tag[i] === "'") {
+        const end = skipQuoted(tag, i);
+        if (end === -1) {
+          return undefined;
+        }
+        value = tag.slice(i + 1, end - 1);
+        i = end;
+      } else {
+        value = /** @type {RegExpExecArray} */ (
+          matchSticky(/[^\s>]*/y, tag, i)
+        )[0];
+        i += value.length;
+      }
+    }
+    if (match[1].toLowerCase() === name) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Finds a root tag that only declares the Fluid namespaces, i.e. `<fluid …>`
  * or any tag with `data-namespace-typo3-fluid="true"`, wrapping the template.
- * Comments before it (e.g. `<!-- @format -->`) are allowed.
+ * A DOCTYPE and comments before it (e.g. `<!-- @format -->`) are allowed.
  *
  * @param {string} text
  * @returns {{ prefix: string, name: string, openStart: number, openEnd: number, closeStart: number } | undefined}
  */
 export function findRootElement(text) {
-  const open = /^((?:\s*<!--[\s\S]*?-->)*)\s*<([a-zA-Z][\w-]*)(?=[\s/>])/.exec(
-    text,
-  );
+  const open =
+    /^((?:\s*(?:<!--[\s\S]*?-->|<!doctype\b[^>]*>))*)\s*<([a-zA-Z][\w-]*)(?=[\s/>])/i.exec(
+      text,
+    );
   if (!open) {
     return undefined;
   }
@@ -1494,7 +1596,7 @@ export function findRootElement(text) {
   const tag = text.slice(openStart, openEnd);
   if (
     name.toLowerCase() !== "fluid" &&
-    !/\sdata-namespace-typo3-fluid\s*=\s*["']?true/i.test(tag)
+    getAttribute(tag, "data-namespace-typo3-fluid")?.toLowerCase() !== "true"
   ) {
     return undefined;
   }

@@ -1,6 +1,6 @@
 // @ts-check
 /** @import { Options, Plugin, SupportOption } from "prettier" */
-/** @import { Position, RestoreState } from "./preprocess.js" */
+/** @import { Origin, Position } from "./preprocess.js" */
 import * as prettier from "prettier";
 import {
   findRootElement,
@@ -71,7 +71,7 @@ function getForwardedOptionNames(plugins) {
  * message and code frame point at the right line.
  *
  * @param {unknown} error
- * @param {{ html: string, source: string, state: RestoreState }} context
+ * @param {Parameters<typeof toSourcePosition>[1]} context
  */
 function toFluidError(error, context) {
   const loc = /** @type {{ loc?: { start: Position, end?: Position } }} */ (
@@ -190,8 +190,9 @@ export const options = {
  *
  * @param {string} text
  * @param {FluidOptions} options
+ * @param {Origin} [origin] Where `text` is taken from, for error positions.
  */
-async function formatTemplate(text, options) {
+async function formatTemplate(text, options, origin) {
   const { html, state } = preprocess(text, {
     blockViewHelpers: options.fluidBlockViewHelpers,
     inlineViewHelpers: options.fluidInlineViewHelpers,
@@ -221,7 +222,7 @@ async function formatTemplate(text, options) {
       endOfLine: "lf",
     });
   } catch (error) {
-    throw toFluidError(error, { html, source: text, state });
+    throw toFluidError(error, { html, source: text, state, origin });
   }
   return restore(formatted, state);
 }
@@ -241,16 +242,19 @@ async function formatWithFlatRoot(text, root, options) {
   const tagOptions = options.fluidRootAttributePerLine
     ? { ...options, printWidth: 1 }
     : options;
-  const opening = (await formatTemplate(`${openTag}${closeTag}`, tagOptions))
+  const opening = (
+    await formatTemplate(`${openTag}${closeTag}`, tagOptions, {
+      text,
+      offset: root.openStart,
+    })
+  )
     .trim()
     .slice(0, -closeTag.length)
     .trimEnd();
 
-  // Leading line breaks keep the line numbers of parse errors correct.
-  const linesBefore = text.slice(0, root.openEnd).split("\n").length - 1;
   const content = text.slice(root.openEnd, root.closeStart);
   const children = (
-    await formatTemplate("\n".repeat(linesBefore) + content, options)
+    await formatTemplate(content, options, { text, offset: root.openEnd })
   ).trim();
 
   const body = children

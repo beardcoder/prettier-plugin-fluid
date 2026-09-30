@@ -1,10 +1,11 @@
 name: Release
 
 # Rolling release: runs after CI succeeded on main. If the commits since the
-# last version tag contain a feat, fix, perf, revert or breaking change, it
-# bumps the version, prepends the conventional-changelog section to
-# CHANGELOG.md, commits and tags that, publishes to npm and creates the GitHub
-# release. Other commits (docs, chore, ci, ...) do not trigger a release.
+# last version tag contain a feat, fix, perf, revert or breaking change,
+# release-it (see .release-it.js) bumps the version, prepends the
+# conventional-changelog section to CHANGELOG.md, commits, tags and pushes that
+# and creates the GitHub release. The workflow then publishes to npm. Other
+# commits (docs, chore, ci, ...) do not trigger a release.
 #
 # npm publishing uses trusted publishing (OIDC) with provenance, so no npm
 # token is needed. It is bound to this workflow file name and the "npm"
@@ -49,22 +50,19 @@ jobs:
       - run: npm install --global npm@latest
       - run: bun install --frozen-lockfile
 
-      - name: Prepare release
-        id: prepare
-        run: bun run release
-
-      - name: Commit and tag
-        if: steps.prepare.outputs.released == 'true'
+      # Does nothing if no commit since the last tag warrants a release.
+      - name: Release
         env:
-          VERSION: ${{ steps.prepare.outputs.version }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit --all --message "chore(release): v${VERSION}"
-          git tag --annotate "v${VERSION}" --message "v${VERSION}"
-          # Fails without side effects if main moved on in the meantime; the
-          # CI run of the newer commit then releases everything together.
-          git push --atomic origin HEAD:main "v${VERSION}"
+          # release-it needs a branch; it pushes atomically, so this fails
+          # without side effects if main moved on in the meantime. The CI run
+          # of the newer commit then releases everything together.
+          git switch --force-create main
+          git branch --set-upstream-to origin/main
+          bun run release --ci
 
       # The following steps only act on versions whose tag is on GitHub, which
       # makes them safe to re-run.
@@ -89,6 +87,8 @@ jobs:
             npm publish --provenance --access public
           fi
 
+      # release-it creates the GitHub release; this only completes releases
+      # whose run failed after the push.
       - name: Create GitHub release
         if: steps.current.outputs.tagged == 'true'
         env:
@@ -98,6 +98,7 @@ jobs:
           if gh release view "v${VERSION}" >/dev/null 2>&1; then
             echo "Release v${VERSION} already exists."
           else
-            bun run release notes "${VERSION}" > release-notes.md
+            # The CHANGELOG.md section of the version, without its heading.
+            awk -v heading="## [${VERSION}]" 'index($0, "## ") == 1 { p = index($0, heading) == 1; next } p' CHANGELOG.md > release-notes.md
             gh release create "v${VERSION}" --title "v${VERSION}" --notes-file release-notes.md --verify-tag
           fi

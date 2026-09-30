@@ -5,6 +5,7 @@ All notable changes to this project are documented here. The project follows
 every commit on `main` that contains a `feat`, `fix`, `perf`, `revert` or a
 breaking change is published automatically. Entries are generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by
+[release-it](https://github.com/release-it/release-it) with
 [conventional-changelog](https://github.com/conventional-changelog/conventional-changelog).
 
 ## [0.11.0](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.10.0...v0.11.0) (2026-09-30)

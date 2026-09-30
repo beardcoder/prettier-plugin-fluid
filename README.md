@@ -378,11 +378,13 @@ the last version tag:
 | breaking change (`feat!:` or `BREAKING CHANGE:` footer) | major (minor while still on 0.x) |
 | only `docs`, `chore`, `ci`, `test`, `refactor`, …       | none                             |
 
-For a release, the workflow bumps `package.json` and prepends a
+For a release, the workflow runs [release-it](https://github.com/release-it/release-it)
+(configured in [`.release-it.js`](.release-it.js)). It bumps `package.json`,
+prepends a
 [conventional-changelog](https://github.com/conventional-changelog/conventional-changelog)
-section to `CHANGELOG.md`. It commits both as `chore(release): vX.Y.Z` and
-tags the commit. It then publishes to npm via trusted publishing with
-provenance and creates the GitHub release with the same notes.
+section to `CHANGELOG.md`, commits both as `chore(release): vX.Y.Z`, tags and
+pushes the commit and creates the GitHub release with the same notes. The
+workflow then publishes to npm via trusted publishing with provenance.
 
 Preview the next release locally with `bun run release --dry-run`.
 

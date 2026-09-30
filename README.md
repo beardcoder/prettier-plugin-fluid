@@ -191,15 +191,16 @@ space after each comma and spaces inside the braces, or none:
 <f:render partial="Card" arguments="{ item:item, title:'A' }" />
 
 <!-- "never" -->
-<p>{ 0: 'a', 1: 'b' }</p>
-<p>{0: 'a', 1: 'b'}</p>
+<p>{f:translate(key: 'x', arguments: { 0: 'a', 1: 'b' })}</p>
+<p>{f:translate(key: 'x', arguments: {0: 'a', 1: 'b'})}</p>
 ```
 
-Nested arrays, also inside ViewHelper arguments, are formatted the same way.
-Keys, values and the space around `:` stay as written, as do strings and
-multi-line arrays. An expression with a single entry and no space around its
-`:`, such as `{fh:tree}` or `{"w":"1"}`, is never changed: it may be no array
-at all.
+Like Fluid itself, the plugin only sees arrays in ViewHelper arguments: in
+attribute values of ViewHelper tags and in the arguments of inline ViewHelpers.
+Elsewhere, Fluid outputs `{a: 1}` as text, so it is never changed, e.g. in
+`<p>{a: 1}</p>` or Alpine's `x-data="{open: false}"`. Nested arrays are
+formatted the same way. Keys, values and the space around `:` stay as written,
+as do strings and multi-line arrays.
 
 ### Content that must not change
 

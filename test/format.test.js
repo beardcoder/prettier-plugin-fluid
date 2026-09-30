@@ -260,14 +260,14 @@ describe("fluidArraySpacing", () => {
   const never = { fluidArraySpacing: "never" };
 
   test("preserve (default) keeps arrays as written", async () => {
-    const source = `<p>{1:tree,2:house} { a: 1 }</p>\n`;
+    const source = `<f:render partial="Card" arguments="{1:tree,2:house}" />\n`;
     await assertFormat(source, source);
   });
 
   test("always adds spaces inside the braces and after commas", async () => {
     await assertFormat(
-      `<p>{1:tree,2:house}</p>`,
-      `<p>{ 1:tree, 2:house }</p>\n`,
+      `<f:render partial="Card" arguments="{1:tree,2:house}" />`,
+      `<f:render partial="Card" arguments="{ 1:tree, 2:house }" />\n`,
       always,
     );
     await assertFormat(
@@ -279,24 +279,37 @@ describe("fluidArraySpacing", () => {
 
   test("never removes spaces inside the braces", async () => {
     await assertFormat(
-      `<p>{ 1:tree, 2:house }</p>`,
-      `<p>{1:tree, 2:house}</p>\n`,
+      `<f:render partial="Card" arguments="{ 1:tree, 2:house }" />`,
+      `<f:render partial="Card" arguments="{1:tree, 2:house}" />\n`,
       never,
     );
   });
 
-  test("nested arrays, also in ViewHelper arguments", async () => {
+  test("nested arrays, also in inline ViewHelper arguments", async () => {
     await assertFormat(
       `<p>{f:translate(key: 'x', arguments: {0: a,1: {b: c}})}</p>`,
       `<p>{f:translate(key: 'x', arguments: { 0: a, 1: { b: c } })}</p>\n`,
       always,
     );
+    await assertFormat(
+      `<div data-count="{items -> f:count()} {f:count(subject: {a: 1,b: 2})}"></div>`,
+      `<div data-count="{items -> f:count()} {f:count(subject: { a: 1, b: 2 })}"></div>\n`,
+      always,
+    );
   });
 
-  test("never touches code that only looks like an array", async () => {
-    const source = `<p>
-  {fh:tree} {f:format.raw()} {a -> f:format.raw()} {foo ? x : y} {item.title}
-  {a == 'b'} {f:if(condition: a, then: 'x')} {"w":"1"}
+  test("every array in ViewHelper arguments, also with a single entry", async () => {
+    await assertFormat(
+      `<f:render partial="Card" arguments="{fh:tree}" />\n<f:variable.set name="x" value='{"w":"1"}' />`,
+      `<f:render partial="Card" arguments="{ fh:tree }" />\n<f:variable.set name="x" value='{ "w":"1" }' />\n`,
+      always,
+    );
+  });
+
+  test("never touches arrays outside of ViewHelper arguments: Fluid outputs them as text", async () => {
+    const source = `<p x-data="{open: false,count: 0}" data-json='{"w":"1"}'>
+  {fh:tree} {1:tree,2:house} {f:format.raw()} {a -> f:format.raw()}
+  {foo ? x : y} {item.title} {a == 'b'} {f:if(condition: a, then: 'x')}
 </p>
 `;
     await assertFormat(source, source, always);

@@ -316,20 +316,14 @@ function matchSticky(regex, text, index) {
  * comma and the given spacing inside the braces. Keys, delimiters and values
  * stay as written.
  *
- * `{fh:tree}` also matches Fluid's array syntax, but reads like a namespaced
- * name (and `{"w":"1"}` like JSON); a single entry without whitespace around
- * its delimiter is therefore never treated as an array at the top level.
- *
  * @param {string} code An expression from `{` to `}`.
  * @param {"always" | "never"} spacing
- * @param {boolean} nested Whether `code` is the value of an array entry.
  * @returns {string | undefined} Undefined if `code` is no single-line array.
  */
-function formatArray(code, spacing, nested) {
+function formatArray(code, spacing) {
   const end = code.length - 1;
   /** @type {string[]} */
   const entries = [];
-  let ambiguous = false;
   let i = 1;
   while (true) {
     const space = /** @type {RegExpExecArray} */ (
@@ -359,12 +353,11 @@ function formatArray(code, spacing, nested) {
       value =
         valueEnd === -1
           ? undefined
-          : formatArray(code.slice(valueStart, valueEnd), spacing, true);
+          : formatArray(code.slice(valueStart, valueEnd), spacing);
     } else {
       value = matchSticky(ARRAY_IDENTIFIER, code, valueStart)?.[0];
       valueEnd = valueStart + (value?.length ?? 0);
     }
-    ambiguous = /^[:=]$/.test(key[2]);
     if (value === undefined || valueEnd === -1 || valueEnd > end) {
       return undefined;
     }
@@ -378,25 +371,35 @@ function formatArray(code, spacing, nested) {
     }
     i += separator.length;
   }
-  if (entries.length === 0 || (entries.length === 1 && ambiguous && !nested)) {
+  if (entries.length === 0) {
     return undefined;
   }
   const pad = spacing === "always" ? " " : "";
   return `{${pad}${entries.join(", ")}${pad}}`;
 }
 
+// An inline ViewHelper call: `f:translate(`.
+const VIEWHELPER_CALL = /[a-zA-Z0-9.]+:[a-zA-Z0-9.]+$/;
+
 /**
- * Applies `formatArray()` to every array in an expression, including arrays
- * nested in ViewHelper arguments. Quoted strings are left alone.
+ * Applies `formatArray()` to every array in an expression. Like Fluid, only
+ * ViewHelper arguments contain arrays: attribute values of ViewHelper tags and
+ * the arguments of inline ViewHelpers (`f:translate(arguments: {0: a})`).
+ * Elsewhere, `{a: 1}` is output as text. Quoted strings are left alone.
  *
  * @param {string} code
  * @param {"always" | "never"} spacing
+ * @param {boolean} inArguments Whether `code` is a ViewHelper argument.
  */
-export function formatArrays(code, spacing) {
+export function formatArrays(code, spacing, inArguments) {
   let result = "";
   let copied = 0;
+  // Per open parenthesis: whether it encloses ViewHelper arguments.
+  /** @type {boolean[]} */
+  const parens = [];
   for (let i = 0; i < code.length; i++) {
     const char = code[i];
+    const isArgument = inArguments || parens.at(-1) === true;
     if (char === "\\") {
       i++;
     } else if (char === '"' || char === "'") {
@@ -405,6 +408,10 @@ export function formatArrays(code, spacing) {
         break;
       }
       i = end - 1;
+    } else if (char === "(") {
+      parens.push(isArgument || VIEWHELPER_CALL.test(code.slice(0, i)));
+    } else if (char === ")") {
+      parens.pop();
     } else if (char === "{") {
       const end = matchShorthand(code, i);
       if (end === -1) {
@@ -412,8 +419,8 @@ export function formatArrays(code, spacing) {
       }
       const inner = code.slice(i, end);
       const formatted =
-        formatArray(inner, spacing, false) ??
-        `{${formatArrays(inner.slice(1, -1), spacing)}}`;
+        (isArgument ? formatArray(inner, spacing) : undefined) ??
+        `{${formatArrays(inner.slice(1, -1), spacing, isArgument)}}`;
       result += code.slice(copied, i) + formatted;
       copied = end;
       i = end - 1;
@@ -586,7 +593,7 @@ class Preprocessor {
   #ignoreHint;
   /** Hints for directives written in `<f:comment>`, by directive. */
   /** @type {Map<string, string>} */ #directiveHints = new Map();
-  /** Placeholders by source, so equal code (e.g. `<h{n}>…</h{n}>`) stays equal. */
+  /** Placeholders by code, so equal code (e.g. `<h{n}>…</h{n}>`) stays equal. */
   /** @type {Map<string, string>} */ #placeholders = new Map();
   /** Replacement for `ns:` in tag names, by namespace. */
   /** @type {Map<string, string>} */ #tagPrefixes = new Map();
@@ -606,6 +613,8 @@ class Preprocessor {
   /** @type {Map<number, string>} */ #assetTags = new Map();
   /** ViewHelper argument values with escaped quotes: start → end. */
   /** @type {Map<number, number>} */ #escapedValues = new Map();
+  /** End of the current ViewHelper tag, whose attributes are arguments. */
+  #argumentsEnd = -1;
 
   /**
    * @param {string} source
@@ -731,12 +740,12 @@ class Preprocessor {
    */
   #replace(end, comment, transform) {
     const original = this.#source.slice(this.#pos, end);
-    const existing = comment ? undefined : this.#placeholders.get(original);
+    const code = transform ? transform(original) : original;
+    const existing = comment ? undefined : this.#placeholders.get(code);
     if (existing) {
       this.#emit(existing, end);
       return true;
     }
-    const code = transform ? transform(original) : original;
     const lineStart = this.#source.lastIndexOf("\n", this.#pos - 1) + 1;
     const indent = /^[ \t]*/.exec(this.#source.slice(lineStart, this.#pos))?.[0]
       .length;
@@ -756,7 +765,7 @@ class Preprocessor {
     );
     const placeholder = `${core}${padding}${this.#nonce}`;
     if (!comment) {
-      this.#placeholders.set(original, placeholder);
+      this.#placeholders.set(code, placeholder);
     }
 
     this.#emit(comment ? `<!--${placeholder}-->` : placeholder, end);
@@ -785,6 +794,7 @@ class Preprocessor {
   #shorthand() {
     const end = matchShorthand(this.#source, this.#pos);
     const spacing = this.#arraySpacing;
+    const inArguments = this.#pos < this.#argumentsEnd;
     return (
       end !== -1 &&
       this.#replace(
@@ -792,7 +802,7 @@ class Preprocessor {
         false,
         spacing === "preserve"
           ? undefined
-          : (code) => formatArrays(code, spacing),
+          : (code) => formatArrays(code, spacing, inArguments),
       )
     );
   }
@@ -900,6 +910,7 @@ class Preprocessor {
       // the HTML parser would put every child into the `f` namespace, where
       // e.g. `<input>` is no void element and `<p>` has no implied end tag.
       if (!slash) {
+        this.#argumentsEnd = findTagEnd(this.#source, this.#pos);
         this.#findEscapedValues();
       }
       const renamed = `<${slash}${this.#tagPrefix(namespace)}${name}`;
@@ -976,8 +987,7 @@ class Preprocessor {
    * whole.
    */
   #findEscapedValues() {
-    const tagEnd = findTagEnd(this.#source, this.#pos);
-    for (let i = this.#pos; i < tagEnd; i++) {
+    for (let i = this.#pos; i < this.#argumentsEnd; i++) {
       const char = this.#source[i];
       if (char !== '"' && char !== "'") {
         continue;

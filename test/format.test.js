@@ -212,6 +212,11 @@ describe("shorthand syntax", () => {
     await assertFormat(source, source);
   });
 
+  test("ternary conditions with operators shorthand syntax does not allow", async () => {
+    const source = `<p>\n  {(a && b) ? 'yes   indeed' : 'no'} {(foo.bar < 10) ? 'x' : 'y'}\n  {!(false && 1) ? 'yes' : 'no'} {(1 <= 0) ? 'yes' : 'no'}\n</p>\n`;
+    await assertFormat(source, source);
+  });
+
   test("in attribute-name position", async () => {
     const source = `<div {attributes -> f:format.raw()} class="a"></div>\n`;
     await assertFormat(source, source);
@@ -601,6 +606,11 @@ describe("other plugins", () => {
     await assertFormat(
       `<div class="p-4 flex {f:if(condition: a, then: 'x')}"></div>`,
       `<div class="{f:if(condition: a, then: 'x')} flex p-4"></div>\n`,
+      { plugins: ALL_PLUGINS },
+    );
+    await assertFormat(
+      `<div class="p-4 flex {(a && b) ? 'active   big' : 'hidden'}"></div>`,
+      `<div class="{(a && b) ? 'active   big' : 'hidden'} flex p-4"></div>\n`,
       { plugins: ALL_PLUGINS },
     );
   });

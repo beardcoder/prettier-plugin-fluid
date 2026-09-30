@@ -111,6 +111,11 @@ export const DEFAULT_BLOCK_VIEWHELPERS = Object.freeze([
 const SHORTHAND_CHAR = /[a-zA-Z0-9|\->_:=,.()*+^/%!?\s]/;
 const VIEWHELPER_NAME = "[a-zA-Z0-9.]*:[a-zA-Z0-9.]+";
 
+// TernaryExpressionNode::$detectionExpression of typo3/fluid: the condition
+// may contain characters shorthand syntax does not, e.g. `{(a && b) ? 1 : 2}`.
+const TERNARY =
+  /\{[!\w.()|&'"=<>%\s{}:,]+\s?\?\s?[\w.\s'"]*\s?:\s?[\w.\s'"]+\}/y;
+
 /**
  * `<!-- prettier-ignore-start -->`, also wrapped in `<f:comment>` so it does
  * not end up in the rendered HTML.
@@ -242,13 +247,28 @@ function skipQuoted(text, index) {
 /**
  * Matches Fluid shorthand syntax the way Fluid's recursive `(?R)` pattern
  * does: nested braces and quoted strings (with backslash escapes, which may
- * contain further shorthand syntax) at any depth.
+ * contain further shorthand syntax) at any depth. Also matches ternary
+ * expressions, which Fluid detects separately.
  *
  * @param {string} text
  * @param {number} index Position of the opening `{`.
  * @returns {number} Index after the closing `}`, or -1 if this is no Fluid syntax.
  */
 export function matchShorthand(text, index) {
+  const end = matchBraces(text, index);
+  if (end !== -1) {
+    return end;
+  }
+  TERNARY.lastIndex = index;
+  return TERNARY.test(text) ? TERNARY.lastIndex : -1;
+}
+
+/**
+ * @param {string} text
+ * @param {number} index Position of the opening `{`.
+ * @returns {number} Index after the closing `}`, or -1.
+ */
+function matchBraces(text, index) {
   let i = index + 1;
   while (i < text.length) {
     const char = text[i];

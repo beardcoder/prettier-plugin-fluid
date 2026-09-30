@@ -7,6 +7,12 @@ breaking change is published automatically. Entries are generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by
 [conventional-changelog](https://github.com/conventional-changelog/conventional-changelog).
 
+## [0.9.2](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.9.1...v0.9.2) (2026-09-30)
+
+### Bug Fixes
+
+- keep ternary expressions with && or < in the condition as written ([08a7e11](https://github.com/beardcoder/prettier-plugin-fluid/commit/08a7e11feafffd955af4cc5018734d14873c07cc))
+
 ## [0.9.1](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.9.0...v0.9.1) (2026-09-30)
 
 ### Bug Fixes

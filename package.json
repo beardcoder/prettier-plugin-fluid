@@ -1,6 +1,6 @@
 {
   "name": "@beardcoder/prettier-plugin-fluid",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "Prettier plugin for TYPO3 Fluid templates that plays nicely with other HTML plugins",
   "keywords": [
     "prettier",

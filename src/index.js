@@ -22,6 +22,7 @@ const { hardline, join } = prettier.doc.builders;
  *   fluidRootAttributePerLine?: boolean,
  *   fluidFinalNewline?: boolean,
  *   fluidArraySpacing?: import("./preprocess.js").ArraySpacing,
+ *   fluidArraySpacingInStrings?: boolean,
  * }} FluidOptions
  */
 
@@ -175,6 +176,13 @@ export const options = {
       },
     ],
   },
+  fluidArraySpacingInStrings: {
+    category: "Fluid",
+    type: "boolean",
+    default: false,
+    description:
+      "With fluidArraySpacing: also format arrays in quoted strings of ViewHelper arguments, e.g. then: '{a: 1}'. Fluid parses them as arrays, too.",
+  },
 };
 
 /**
@@ -190,6 +198,7 @@ async function formatTemplate(text, options) {
     verbatimViewHelpers: options.fluidVerbatimViewHelpers,
     printWidth: options.printWidth,
     arraySpacing: options.fluidArraySpacing,
+    arraySpacingInStrings: options.fluidArraySpacingInStrings,
   });
   const plugins = options.plugins ?? [];
   const forwarded = Object.fromEntries(

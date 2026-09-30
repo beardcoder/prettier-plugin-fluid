@@ -27,8 +27,15 @@
  *   than this, so a tag containing one always breaks its attributes.
  * @property {ArraySpacing} [arraySpacing] Spaces inside the braces of
  *   single-line Fluid arrays (`{ a: 1, b: 2 }` or `{a: 1, b: 2}`).
+ * @property {boolean} [arraySpacingInStrings] Also format arrays in quoted
+ *   strings of ViewHelper arguments (`'{a: 1}'`).
  *
  * @typedef {"preserve" | "always" | "never"} ArraySpacing
+ *
+ * @typedef {object} ArrayFormat
+ * @property {"always" | "never"} spacing
+ * @property {boolean} inStrings Whether to format arrays in quoted strings of
+ *   ViewHelper arguments, which Fluid parses as arguments, too.
  *
  * @typedef {object} Fragment
  * @property {string} source Original template code.
@@ -317,10 +324,10 @@ function matchSticky(regex, text, index) {
  * stay as written.
  *
  * @param {string} code An expression from `{` to `}`.
- * @param {"always" | "never"} spacing
+ * @param {ArrayFormat} format
  * @returns {string | undefined} Undefined if `code` is no single-line array.
  */
-function formatArray(code, spacing) {
+function formatArray(code, format) {
   const end = code.length - 1;
   /** @type {string[]} */
   const entries = [];
@@ -348,12 +355,15 @@ function formatArray(code, spacing) {
     if (char === '"' || char === "'") {
       valueEnd = skipQuoted(code, valueStart);
       value = code.slice(valueStart, valueEnd);
+      if (format.inStrings && valueEnd !== -1) {
+        value = formatString(value, format);
+      }
     } else if (char === "{") {
       valueEnd = matchShorthand(code, valueStart);
       value =
         valueEnd === -1
           ? undefined
-          : formatArray(code.slice(valueStart, valueEnd), spacing);
+          : formatArray(code.slice(valueStart, valueEnd), format);
     } else {
       value = matchSticky(ARRAY_IDENTIFIER, code, valueStart)?.[0];
       valueEnd = valueStart + (value?.length ?? 0);
@@ -374,7 +384,7 @@ function formatArray(code, spacing) {
   if (entries.length === 0) {
     return undefined;
   }
-  const pad = spacing === "always" ? " " : "";
+  const pad = format.spacing === "always" ? " " : "";
   return `{${pad}${entries.join(", ")}${pad}}`;
 }
 
@@ -382,16 +392,28 @@ function formatArray(code, spacing) {
 const VIEWHELPER_CALL = /[a-zA-Z0-9.]+:[a-zA-Z0-9.]+$/;
 
 /**
+ * Formats the arrays in a quoted string of a ViewHelper argument.
+ *
+ * @param {string} code The string including its quotes.
+ * @param {ArrayFormat} format
+ */
+function formatString(code, format) {
+  const quote = code[0];
+  return `${quote}${formatArrays(code.slice(1, -1), format, true)}${quote}`;
+}
+
+/**
  * Applies `formatArray()` to every array in an expression. Like Fluid, only
  * ViewHelper arguments contain arrays: attribute values of ViewHelper tags and
  * the arguments of inline ViewHelpers (`f:translate(arguments: {0: a})`).
- * Elsewhere, `{a: 1}` is output as text. Quoted strings are left alone.
+ * Elsewhere, `{a: 1}` is output as text. Quoted strings are left alone unless
+ * `format.inStrings` is set.
  *
  * @param {string} code
- * @param {"always" | "never"} spacing
+ * @param {ArrayFormat} format
  * @param {boolean} inArguments Whether `code` is a ViewHelper argument.
  */
-export function formatArrays(code, spacing, inArguments) {
+export function formatArrays(code, format, inArguments) {
   let result = "";
   let copied = 0;
   // Per open parenthesis: whether it encloses ViewHelper arguments.
@@ -407,6 +429,11 @@ export function formatArrays(code, spacing, inArguments) {
       if (end === -1) {
         break;
       }
+      if (isArgument && format.inStrings) {
+        result +=
+          code.slice(copied, i) + formatString(code.slice(i, end), format);
+        copied = end;
+      }
       i = end - 1;
     } else if (char === "(") {
       parens.push(isArgument || VIEWHELPER_CALL.test(code.slice(0, i)));
@@ -419,8 +446,8 @@ export function formatArrays(code, spacing, inArguments) {
       }
       const inner = code.slice(i, end);
       const formatted =
-        (isArgument ? formatArray(inner, spacing) : undefined) ??
-        `{${formatArrays(inner.slice(1, -1), spacing, isArgument)}}`;
+        (isArgument ? formatArray(inner, format) : undefined) ??
+        `{${formatArrays(inner.slice(1, -1), format, isArgument)}}`;
       result += code.slice(copied, i) + formatted;
       copied = end;
       i = end - 1;
@@ -587,7 +614,7 @@ class Preprocessor {
   /** @type {(name: string) => boolean} */ #isBlockViewHelper;
   /** @type {(name: string) => boolean} */ #isVerbatimViewHelper;
   /** @type {number} */ #printWidth;
-  /** @type {ArraySpacing} */ #arraySpacing;
+  /** @type {ArrayFormat | undefined} */ #arrayFormat;
   #nonce;
   #displayHint;
   #ignoreHint;
@@ -628,11 +655,15 @@ class Preprocessor {
       verbatimViewHelpers = [],
       printWidth = 80,
       arraySpacing = "preserve",
+      arraySpacingInStrings = false,
     } = {},
   ) {
     this.#source = source;
     this.#printWidth = printWidth;
-    this.#arraySpacing = arraySpacing;
+    this.#arrayFormat =
+      arraySpacing === "preserve"
+        ? undefined
+        : { spacing: arraySpacing, inStrings: arraySpacingInStrings };
     this.#isVerbatimViewHelper = createNameMatcher([
       ...DEFAULT_VERBATIM_VIEWHELPERS,
       ...verbatimViewHelpers,
@@ -793,16 +824,14 @@ class Preprocessor {
 
   #shorthand() {
     const end = matchShorthand(this.#source, this.#pos);
-    const spacing = this.#arraySpacing;
+    const format = this.#arrayFormat;
     const inArguments = this.#pos < this.#argumentsEnd;
     return (
       end !== -1 &&
       this.#replace(
         end,
         false,
-        spacing === "preserve"
-          ? undefined
-          : (code) => formatArrays(code, spacing, inArguments),
+        format && ((code) => formatArrays(code, format, inArguments)),
       )
     );
   }

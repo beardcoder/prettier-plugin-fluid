@@ -316,6 +316,21 @@ describe("fluidArraySpacing", () => {
     await assertFormat(source, source, never);
   });
 
+  test("fluidArraySpacingInStrings: arrays in strings of ViewHelper arguments", async () => {
+    const source = `<p>{f:if(condition: x, then: '{a:1,b:2}')} {x ? '{a:1}' : 'b'}</p>\n`;
+    await assertFormat(source, source, always);
+    await assertFormat(
+      source,
+      `<p>{f:if(condition: x, then: '{ a:1, b:2 }')} {x ? '{a:1}' : 'b'}</p>\n`,
+      { ...always, fluidArraySpacingInStrings: true },
+    );
+    await assertFormat(
+      `<f:alias map="{x: '{f:if(condition: \\'{a:1}\\', then: 1)}', y: 'z {b:2}'}">{x}</f:alias>`,
+      `<f:alias map="{ x: '{f:if(condition: \\'{ a:1 }\\', then: 1)}', y: 'z { b:2 }' }">\n  {x}\n</f:alias>\n`,
+      { ...always, fluidArraySpacingInStrings: true },
+    );
+  });
+
   test("strings and multi-line arrays stay as written", async () => {
     const source = `<f:render
   partial="Card"

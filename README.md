@@ -144,15 +144,16 @@ moves them to the front.
 
 ## Options
 
-| Option                      | Default      | Description                                                                                              |
-| --------------------------- | ------------ | -------------------------------------------------------------------------------------------------------- |
-| `fluidBlockViewHelpers`     | `[]`         | Additional ViewHelpers laid out as blocks. Supports `*` wildcards.                                       |
-| `fluidInlineViewHelpers`    | `[]`         | ViewHelpers laid out inline even if they are blocks by default. Takes precedence.                        |
-| `fluidVerbatimViewHelpers`  | `[]`         | Custom ViewHelpers kept exactly as written, like `f:comment`, `f:spaceless`, `f:variable`. Wildcards ok. |
-| `fluidIndentRoot`           | `true`       | Indent the content of the root `<fluid>` tag. See [root tag](#root-tag).                                 |
-| `fluidRootAttributePerLine` | `false`      | With `fluidIndentRoot: false`: put every attribute of the root tag on its own line.                      |
-| `fluidFinalNewline`         | `true`       | End the file with a line break. `false` omits it, e.g. for projects whose templates have none.           |
-| `fluidArraySpacing`         | `"preserve"` | Spaces inside Fluid arrays: `"always"` → `{ a: 1 }`, `"never"` → `{a: 1}`. See [arrays](#arrays).        |
+| Option                       | Default      | Description                                                                                              |
+| ---------------------------- | ------------ | -------------------------------------------------------------------------------------------------------- |
+| `fluidBlockViewHelpers`      | `[]`         | Additional ViewHelpers laid out as blocks. Supports `*` wildcards.                                       |
+| `fluidInlineViewHelpers`     | `[]`         | ViewHelpers laid out inline even if they are blocks by default. Takes precedence.                        |
+| `fluidVerbatimViewHelpers`   | `[]`         | Custom ViewHelpers kept exactly as written, like `f:comment`, `f:spaceless`, `f:variable`. Wildcards ok. |
+| `fluidIndentRoot`            | `true`       | Indent the content of the root `<fluid>` tag. See [root tag](#root-tag).                                 |
+| `fluidRootAttributePerLine`  | `false`      | With `fluidIndentRoot: false`: put every attribute of the root tag on its own line.                      |
+| `fluidFinalNewline`          | `true`       | End the file with a line break. `false` omits it, e.g. for projects whose templates have none.           |
+| `fluidArraySpacing`          | `"preserve"` | Spaces inside Fluid arrays: `"always"` → `{ a: 1 }`, `"never"` → `{a: 1}`. See [arrays](#arrays).        |
+| `fluidArraySpacingInStrings` | `false`      | With `fluidArraySpacing`: also format arrays in quoted strings of ViewHelper arguments.                  |
 
 All standard Prettier options apply, such as `printWidth`, `tabWidth`,
 `bracketSameLine` and `singleAttributePerLine`.
@@ -201,6 +202,15 @@ Elsewhere, Fluid outputs `{a: 1}` as text, so it is never changed, e.g. in
 `<p>{a: 1}</p>` or Alpine's `x-data="{open: false}"`. Nested arrays are
 formatted the same way. Keys, values and the space around `:` stay as written,
 as do strings and multi-line arrays.
+
+Quoted strings in ViewHelper arguments are parsed by Fluid as well, so
+`then: '{a: 1}'` also contains an array. Such strings are kept as written by
+default; add `"fluidArraySpacingInStrings": true` to format their arrays, too:
+
+```html
+<p>{f:if(condition: x, then: '{a:1,b:2}')}</p>
+<p>{f:if(condition: x, then: '{ a:1, b:2 }')}</p>
+```
 
 ### Content that must not change
 

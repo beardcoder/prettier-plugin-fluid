@@ -31,15 +31,17 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "check": "bun run typecheck && bun run format:check && bun test",
+    "check": "bun run typecheck && bun run format:check && bun test && bun run corpus:strict",
     "corpus": "bun scripts/check-corpus.js",
+    "corpus:strict": "bun scripts/check-corpus.js --strict test/corpus",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",
     "prepublishOnly": "bun run check",
     "release": "release-it",
     "test": "bun test",
-    "test:node": "node --test test/format.test.js",
+    "test:node": "node --test",
+    "test:package": "node scripts/check-package.js",
     "typecheck": "tsc"
   },
   "devDependencies": {

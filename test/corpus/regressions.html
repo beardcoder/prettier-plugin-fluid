@@ -1,0 +1,20 @@
+<div class="{x}" title="{x}">
+  <h{level} class="{x}">{x} {x}</h{level}>
+  <f:comment>{x} <div> kept </f:comment>
+  <f:comment>{x} <div> kept </f:comment>
+  <!-- display: block -->
+  <script>const x = '{f:if(condition: a, then: \'yes\', else: \'no\')}';</script>
+  <f:comment><!-- prettier-ignore-attribute --></f:comment>
+  <style>.a { content: "{f:if(condition: a, then: \'b\')}" }</style>
+  <script>let   plain=1</script>
+  <f:asset.script identifier="a\"b" additionalAttributes="{async: 1}">let x=1</f:asset.script>
+  <f:asset.css identifier="c" href="EXT:site/Resources/Public/c.css" />
+  <f:if condition="{wrap}"><div class="wrapper"></f:if>
+  <p>content   here</p>
+  <f:if condition="{wrap}"></div></f:if>
+  <!-- prettier-ignore-start -->
+  <p>kept   {exactly}</p>
+  <!-- prettier-ignore-end -->
+  <f:link.typolink parameter="{link}" textWrap="<span class=\"icon\">|</span>" />
+  <f:form.textfield additionalAttributes="{placeholder: \"Name\"}" />
+</div>

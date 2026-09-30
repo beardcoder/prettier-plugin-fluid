@@ -1,0 +1,9 @@
+<!DOCTYPE html>
+<!-- Layout -->
+<html data-namespace-typo3-fluid="true" xmlns:f="http://typo3.org/ns/TYPO3/CMS/Fluid/ViewHelpers">
+<f:section name="Main">
+<main class="{f:if(condition: '{page.dark}', then: 'dark')}">
+<f:for each="{items}" as="item" iteration="i"><f:render partial="Item" arguments="{item: item, index: i.index}" /></f:for>
+</main>
+</f:section>
+</html>

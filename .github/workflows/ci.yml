@@ -58,14 +58,33 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run test:node
 
+  package:
+    # The packed npm package, installed with Prettier into a temporary
+    # consumer project; nothing is published.
+    name: Package, Prettier ${{ matrix.prettier }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        prettier: ["3.0.0", "3"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: bun install --frozen-lockfile
+      - run: bun run test:package --prettier ${{ matrix.prettier }}
+
   prettier-compat:
     name: Prettier ${{ matrix.prettier }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # Oldest supported and latest release of the peer dependency.
-        prettier: ["3.0.0", "latest"]
+        # Oldest supported and latest release of the supported major version
+        # of the peer dependency (^3.0.0).
+        prettier: ["3.0.0", "3"]
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2

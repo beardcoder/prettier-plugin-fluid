@@ -1,0 +1,3 @@
+<f:spaceless><span class="item {f:if(condition: item.active, then: 'active')}">  {item.title -> f:format.crop(maxCharacters: 20)}  </span></f:spaceless>
+<f:variable name="label">  {item.label}  </f:variable>
+{f:translate(key: 'more', arguments: {0: '{item.count}'})}

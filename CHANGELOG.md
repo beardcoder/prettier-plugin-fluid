@@ -7,6 +7,12 @@ breaking change is published automatically. Entries are generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by
 [conventional-changelog](https://github.com/conventional-changelog/conventional-changelog).
 
+## [0.9.1](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.9.0...v0.9.1) (2026-09-30)
+
+### Bug Fixes
+
+- keep too long inline elements on one line instead of hugging their tags ([889ace5](https://github.com/beardcoder/prettier-plugin-fluid/commit/889ace503f5f938d4f9374b649394e83e2784a24))
+
 ## [0.9.0](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.8.0...v0.9.0) (2026-09-29)
 
 ### Features

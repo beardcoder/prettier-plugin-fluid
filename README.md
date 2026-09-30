@@ -58,7 +58,8 @@ to them in your Prettier config (`.prettierrc.json`):
 These are the same locations the
 [Fluid extension for VS Code](https://github.com/FriendsOfTYPO3/vscode-fluid-language)
 treats as Fluid templates. Files ending in `.fluid` or `.fluid.html` are
-detected automatically.
+detected automatically (`.fluid.html` from Prettier 3.6 on; older versions
+treat it as `.html`, so assign the parser via `overrides` there).
 
 ```sh
 bunx prettier --write "**/Resources/Private/**/*.html"
@@ -176,7 +177,8 @@ the closing tag:
 ```
 
 This applies to `<fluid>` and to any root tag with
-`data-namespace-typo3-fluid="true"`, such as `<html>`. Add
+`data-namespace-typo3-fluid="true"`, such as `<html>`. A DOCTYPE and
+comments before the root tag are kept as written. Add
 `"fluidRootAttributePerLine": true` to always put the root tag's attributes
 on separate lines, as above.
 
@@ -330,13 +332,14 @@ The plugin also supports `requirePragma` and `insertPragma`
 2. `<f:comment>` elements become opaque HTML comments. ViewHelper tags become
    custom elements of the same width (`<f:if>` → `<f-if>`). Block ViewHelpers
    get a hidden `<!-- display: block -->` hint. Script and style blocks that
-   contain Fluid get a hidden `<!-- prettier-ignore -->`.
+   contain Fluid get a hidden `<!-- prettier-ignore -->`, also after a
+   `display: …` or `prettier-ignore-attribute` comment.
 3. The result is formatted with `parser: "html"`, which uses whichever `html`
    parser the loaded plugins provide.
 4. Inline elements Prettier broke only inside their tags are joined into one
    line again. The hints are removed and every placeholder is replaced by the
-   original code. A missing placeholder is an error. Parse errors are mapped back to the
-   template's own line and column.
+   original code. A missing, duplicated or unknown placeholder is an error.
+   Parse errors are mapped back to the template's own line and column.
 
 ## Development
 
@@ -344,20 +347,49 @@ The project uses [Bun](https://bun.sh) for development:
 
 ```sh
 bun install
-bun run check                     # types (tsc on JSDoc), formatting, tests
+bun run check                     # types (tsc on JSDoc), formatting, tests, strict corpus check
 UPDATE=1 bun test                 # regenerate test/fixtures/*.output.html
-bun run test:node                 # same tests on Node.js
+bun run test:node                 # all test files on Node.js (node --test)
 bun run corpus path/to/templates  # lossless + idempotency check on real templates
+bun run corpus:strict             # strict check of the versioned corpus in test/corpus
+bun run test:package              # smoke test of the packed npm package
 ```
 
 The plugin itself is plain ESM without Bun-specific APIs, since Prettier
 usually runs on Node.js. The tests use `node:test` so they run on both
-runtimes, and CI covers Node 20, 22 and 24.
+runtimes, and CI covers Node 20, 22 and 24, and Prettier 3.0.0 and the latest
+3.x release.
 
-`bun run corpus` formats every `.html` file below the given directories. It
-fails if a Fluid expression or ViewHelper tag is lost, or if a second
-formatting pass changes anything. It also lists templates that are not
-well-nested HTML, and templates where Prettier normalized content.
+Fixtures in `test/fixtures` are formatted with this plugin alone, unless their
+`<name>.options.json` lists further `plugins` they are an integration test
+for. Tests with `prettier-plugin-tailwindcss` are only skipped for the known
+incompatible combination (0.8.x before Prettier 3.7); any other failure fails
+the suite.
+
+`bun run corpus` formats every `.html`, `.fluid.html` and `.fluid` file below
+the given directories (not plain-text templates like `.fluid.txt`). It fails
+if an occurrence of a Fluid expression, a ViewHelper tag, verbatim content
+(`<f:comment>`, ignored ranges, …) or a script/style body with Fluid is lost
+or changed, if a second formatting pass changes anything or fails, or on
+unexpected errors. Re-indenting expressions outside of strings and sorting
+attributes are fine. It also lists templates that are not well-nested HTML,
+and templates where Prettier normalized content.
+
+With `--strict` (`bun scripts/check-corpus.js --strict <dir>`), parse errors
+and finding no template at all fail, too. `bun run corpus:strict` checks the
+small corpus of regression templates in `test/corpus` this way; `bun run
+check` and CI include it.
+
+`bun run test:package` packs the package with `npm pack --ignore-scripts`
+(no build step is needed; `prepare` would only install Git hooks) into a
+temporary directory and installs the tarball with Prettier from the registry
+into a temporary consumer project. There it imports the plugin by its package
+name, checks the exports, formats templates twice, detects `.fluid` and
+`.fluid.html` by file name, formats `.html` with `parser: "fluid"` and runs
+Prettier's CLI. It also checks that the package contains all source files
+and no tests or other development files, and that the repository is left as
+it was. Nothing is published. It needs network access to the npm registry;
+`--prettier <version>` selects the Prettier version.
 
 ### Commit messages
 
@@ -386,7 +418,49 @@ section to `CHANGELOG.md`, commits both as `chore(release): vX.Y.Z`, tags and
 pushes the commit and creates the GitHub release with the same notes. The
 workflow then publishes to npm via trusted publishing with provenance.
 
-Preview the next release locally with `bun run release --dry-run`.
+The whole job is [`scripts/release.js`](scripts/release.js), the same for the
+automatic run after CI and for a manual run:
+
+1. `bun run check` runs first; if it fails, nothing is committed, tagged,
+   released or published.
+2. release-it pushes the release commit and tag atomically. If `main` moved on
+   since the tested commit, the push fails without side effects, and the CI
+   run of the newer commit releases everything together.
+3. The current version is finished only if its tag `vX.Y.Z` is on origin,
+   is on `main` and points to a commit whose `package.json` has this name and
+   version. If npm or GitHub lack the release, exactly the tagged commit is
+   checked out into a separate worktree, checked again and published or
+   released from there.
+
+`npm view` and `gh release view` must answer "not found" for a missing
+release; any other error (authentication, network, …) aborts the job instead
+of publishing. An already published version is never published again.
+
+**Resuming a release.** If a run failed after the tag was pushed (e.g. npm or
+GitHub were unavailable), start the workflow manually on `main` ("Run
+workflow"). It publishes the missing npm package and/or creates the missing
+GitHub release from the tagged sources, even if commits without a version
+bump followed; those are released with the next version. If a newer version
+was released in the meantime, only that one is finished on `main`; to publish
+the skipped version, run the workflow with its tag as the ref. This works for
+tags made with this release setup (`scripts/release.js` and `.release-it.js`
+in the tagged commit), not for older ones such as `v0.11.0`.
+
+Operational requirements, which the tests cannot check:
+
+- npm: a trusted publisher for the package bound to this repository, the
+  workflow file `release.yml` and the environment `npm`. The job installs npm
+  ≥ 11.5.1, which trusted publishing needs.
+- GitHub: an environment named `npm`; the workflow's `GITHUB_TOKEN` needs
+  `contents: write` (release commit, tag, release) and `id-token: write`
+  (OIDC), and must be allowed to push to `main` if it is protected.
+- Provenance is signed for the workflow run; when resuming, the published
+  files are those of the tag, even if the run was started for a later commit.
+
+The release logic is simulated in `test/release.test.js` with temporary Git
+repositories, a local remote and fake `bun`, `npm` and `gh` commands; it runs
+with the other tests. Preview the next release locally with
+`bun run release --dry-run`.
 
 ## License
 

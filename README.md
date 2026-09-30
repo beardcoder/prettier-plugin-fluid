@@ -198,7 +198,7 @@ space after each comma and spaces inside the braces, or none:
 Nested arrays, also inside ViewHelper arguments, are formatted the same way.
 Keys, values and the space around `:` stay as written, as do strings and
 multi-line arrays. An expression with a single entry and no space around its
-`:`, such as `{fh:baum}` or `{"w":"1"}`, is never changed: it may be no array
+`:`, such as `{fh:tree}` or `{"w":"1"}`, is never changed: it may be no array
 at all.
 
 ### Content that must not change

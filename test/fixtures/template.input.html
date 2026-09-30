@@ -2,9 +2,9 @@
 {namespace v=FluidTYPO3\Vhs\ViewHelpers}
 <f:layout name="Default" />
 <f:section name="Main">
-<div id="x" class="b a" data-foo="1"><f:if condition="{items -> f:count()} > 0"><f:then><ul><f:for each="{items}" as="item" iteration="i"><li class="{f:if(condition: i.isFirst, then: 'first')} item">{item.title -> f:format.crop(maxCharacters: 20)}</li></f:for></ul></f:then><f:else><p>Hallo <strong>{user.name}</strong>, {f:translate(key: 'empty', default: 'Keine Einträge vorhanden in dieser Liste')}</p></f:else></f:if></div>
-<f:link.action action="show" arguments="{item: item}" class="btn">Mehr</f:link.action>
-<f:comment>Kommentar {foo}</f:comment>
+<div id="x" class="b a" data-foo="1"><f:if condition="{items -> f:count()} > 0"><f:then><ul><f:for each="{items}" as="item" iteration="i"><li class="{f:if(condition: i.isFirst, then: 'first')} item">{item.title -> f:format.crop(maxCharacters: 20)}</li></f:for></ul></f:then><f:else><p>Hello <strong>{user.name}</strong>, {f:translate(key: 'empty', default: 'No entries in this list — yet')}</p></f:else></f:if></div>
+<f:link.action action="show" arguments="{item: item}" class="btn">More</f:link.action>
+<f:comment>Comment {foo}</f:comment>
 <![CDATA[ foo {bar} <b> ]]>
 <!-- prettier-ignore -->
 <f:if condition="{a}"><b>keep   this</b></f:if>

@@ -18,14 +18,14 @@
         </f:then>
         <f:else>
           <p>
-            Hallo <strong>{user.name}</strong>,
-            {f:translate(key: 'empty', default: 'Keine Einträge vorhanden in dieser Liste')}
+            Hello <strong>{user.name}</strong>,
+            {f:translate(key: 'empty', default: 'No entries in this list — yet')}
           </p>
         </f:else>
       </f:if>
     </div>
-    <f:link.action class="btn" action="show" arguments="{item: item}">Mehr</f:link.action>
-    <f:comment>Kommentar {foo}</f:comment>
+    <f:link.action class="btn" action="show" arguments="{item: item}">More</f:link.action>
+    <f:comment>Comment {foo}</f:comment>
     <![CDATA[ foo {bar} <b> ]]>
     <!-- prettier-ignore -->
     <f:if condition="{a}"><b>keep   this</b></f:if>

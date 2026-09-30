@@ -316,7 +316,7 @@ function matchSticky(regex, text, index) {
  * comma and the given spacing inside the braces. Keys, delimiters and values
  * stay as written.
  *
- * `{fh:baum}` also matches Fluid's array syntax, but reads like a namespaced
+ * `{fh:tree}` also matches Fluid's array syntax, but reads like a namespaced
  * name (and `{"w":"1"}` like JSON); a single entry without whitespace around
  * its delimiter is therefore never treated as an array at the top level.
  *

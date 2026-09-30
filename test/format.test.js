@@ -119,8 +119,8 @@ describe("layout", () => {
       `<h2>\n  <strong class="block text-[clamp(3rem,2.25rem+3.5vw,5.5rem)] leading-[0.9]"><trh:format.inlineMarkup>{record.header}</trh:format.inlineMarkup></strong>\n</h2>\n`,
     );
     await assertFormat(
-      `<p>Lorem ipsum dolor sit amet, consectetur elit, <f:link.page pageUid="{uid}" class="underline hover:text-accent">Datenschutz</f:link.page>, sed do.</p>`,
-      `<p>\n  Lorem ipsum dolor sit amet, consectetur elit,\n  <f:link.page pageUid="{uid}" class="underline hover:text-accent">Datenschutz</f:link.page>, sed do.\n</p>\n`,
+      `<p>Lorem ipsum dolor sit amet, consectetur elit, <f:link.page pageUid="{uid}" class="underline hover:text-accent">Privacy policy</f:link.page>, sed do.</p>`,
+      `<p>\n  Lorem ipsum dolor sit amet, consectetur elit,\n  <f:link.page pageUid="{uid}" class="underline hover:text-accent">Privacy policy</f:link.page>, sed do.\n</p>\n`,
     );
   });
 
@@ -260,14 +260,14 @@ describe("fluidArraySpacing", () => {
   const never = { fluidArraySpacing: "never" };
 
   test("preserve (default) keeps arrays as written", async () => {
-    const source = `<p>{1:baum,2:haus} { a: 1 }</p>\n`;
+    const source = `<p>{1:tree,2:house} { a: 1 }</p>\n`;
     await assertFormat(source, source);
   });
 
   test("always adds spaces inside the braces and after commas", async () => {
     await assertFormat(
-      `<p>{1:baum,2:haus}</p>`,
-      `<p>{ 1:baum, 2:haus }</p>\n`,
+      `<p>{1:tree,2:house}</p>`,
+      `<p>{ 1:tree, 2:house }</p>\n`,
       always,
     );
     await assertFormat(
@@ -279,8 +279,8 @@ describe("fluidArraySpacing", () => {
 
   test("never removes spaces inside the braces", async () => {
     await assertFormat(
-      `<p>{ 1:baum, 2:haus }</p>`,
-      `<p>{1:baum, 2:haus}</p>\n`,
+      `<p>{ 1:tree, 2:house }</p>`,
+      `<p>{1:tree, 2:house}</p>\n`,
       never,
     );
   });
@@ -295,7 +295,7 @@ describe("fluidArraySpacing", () => {
 
   test("never touches code that only looks like an array", async () => {
     const source = `<p>
-  {fh:baum} {f:format.raw()} {a -> f:format.raw()} {foo ? x : y} {item.title}
+  {fh:tree} {f:format.raw()} {a -> f:format.raw()} {foo ? x : y} {item.title}
   {a == 'b'} {f:if(condition: a, then: 'x')} {"w":"1"}
 </p>
 `;

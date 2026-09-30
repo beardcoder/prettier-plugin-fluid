@@ -45,6 +45,8 @@
  * @typedef {object} RestoreState
  * @property {string} source The original template.
  * @property {string} nonce
+ * @property {string[]} namespaces Namespaces whose tags were renamed to
+ *   `ns-name` rather than `ns-<nonce>-name`.
  * @property {string[]} hints Comments inserted to steer Prettier.
  * @property {Fragment[]} fragments
  * @property {Segment[]} segments Sorted by position.
@@ -566,6 +568,8 @@ class Preprocessor {
   /** @type {Map<string, string>} */ #directiveHints = new Map();
   /** Placeholders by source, so equal code (e.g. `<h{n}>…</h{n}>`) stays equal. */
   /** @type {Map<string, string>} */ #placeholders = new Map();
+  /** Replacement for `ns:` in tag names, by namespace. */
+  /** @type {Map<string, string>} */ #tagPrefixes = new Map();
   /** @type {Fragment[]} */ #fragments = [];
   /** @type {string[]} */ #output = [];
   #outputLength = 0;
@@ -649,6 +653,9 @@ class Preprocessor {
     const state = {
       source: this.#source,
       nonce: this.#nonce,
+      namespaces: [...this.#tagPrefixes]
+        .filter(([namespace, prefix]) => prefix === `${namespace}-`)
+        .map(([namespace]) => namespace),
       hints: [
         this.#displayHint,
         this.#ignoreHint,
@@ -869,13 +876,13 @@ class Preprocessor {
       ) {
         this.#emit(this.#displayHint, this.#pos);
       }
-      // `<f:if` becomes the custom element `<f-qz-if`. With a namespaced name,
+      // `<f:if` becomes the custom element `<f-if`. With a namespaced name,
       // the HTML parser would put every child into the `f` namespace, where
       // e.g. `<input>` is no void element and `<p>` has no implied end tag.
       if (!slash) {
         this.#findEscapedValues();
       }
-      const renamed = `<${slash}${namespace}-${this.#nonce}-${name}`;
+      const renamed = `<${slash}${this.#tagPrefix(namespace)}${name}`;
       this.#emit(renamed, this.#pos + tag.length);
       return true;
     }
@@ -966,6 +973,25 @@ class Preprocessor {
     }
   }
 
+  /**
+   * `f-` keeps the width of `f:`, so Prettier breaks lines where it would with
+   * the original tag. Templates that already contain `<f-…>` tags get
+   * `f-<nonce>-` instead, so the renamed tags stay distinguishable.
+   *
+   * @param {string} namespace
+   */
+  #tagPrefix(namespace) {
+    let prefix = this.#tagPrefixes.get(namespace);
+    if (!prefix) {
+      const taken = new RegExp(`</?${escapeRegExp(namespace)}-`, "i");
+      prefix = taken.test(this.#source)
+        ? `${namespace}-${this.#nonce}-`
+        : `${namespace}-`;
+      this.#tagPrefixes.set(namespace, prefix);
+    }
+    return prefix;
+  }
+
   /** `<!-- prettier-ignore -->` / `<!-- display: x -->` must stay adjacent to their tag. */
   #followsDirective() {
     const before = this.#source.slice(Math.max(0, this.#pos - 500), this.#pos);
@@ -997,7 +1023,10 @@ export function restore(formatted, state) {
 
   const text = fixAttributeQuotes(
     restoreAssetTags(
-      restoreTagNames(formatted.replace(hint, ""), nonce),
+      restoreTagNames(
+        collapseHuggedElements(formatted).replace(hint, ""),
+        state,
+      ),
       state.rawTextTags,
     ),
     state,
@@ -1025,6 +1054,167 @@ export function restore(formatted, state) {
     );
   }
   return result;
+}
+
+/**
+ * Prettier cannot break a too long inline element without adding whitespace,
+ * so it moves the brackets of its tags to the next line instead:
+ *
+ *     <strong
+ *       class="…"
+ *       ><em>text</em></strong
+ *     >
+ *
+ * Such an element is put back on one line, even if that exceeds the print
+ * width, as long as its content has no line break of its own. Only line
+ * breaks inside tags are removed, so the rendered whitespace stays the same.
+ *
+ * @param {string} html Formatted HTML with placeholders.
+ */
+function collapseHuggedElements(html) {
+  /** @type {{ start: number, end: number }[]} */
+  const tags = [];
+  /** Line breaks outside of tag syntax, i.e. in content. */
+  /** @type {number[]} */
+  const breaks = [];
+  /** @type {{ start: number, end: number }[]} */
+  const hugged = [];
+  /** @type {{ name: string, start: number, hugged: boolean }[]} */
+  const stack = [];
+
+  /** @param {number} start @param {number} end */
+  const addBreaks = (start, end) => {
+    for (let i = html.indexOf("\n", start); i !== -1 && i < end;) {
+      breaks.push(i);
+      i = html.indexOf("\n", i + 1);
+    }
+  };
+
+  let i = 0;
+  while (i < html.length) {
+    if (html[i] === "\n") {
+      breaks.push(i++);
+      continue;
+    }
+    if (html[i] !== "<") {
+      i++;
+      continue;
+    }
+    const terminator = html.startsWith("<!--", i)
+      ? "-->"
+      : html.startsWith("<![CDATA[", i)
+        ? "]]>"
+        : html.startsWith("<!", i)
+          ? ">"
+          : undefined;
+    if (terminator) {
+      const end = html.indexOf(terminator, i);
+      const stop = end === -1 ? html.length : end + terminator.length;
+      addBreaks(i, stop);
+      i = stop;
+      continue;
+    }
+    ANY_TAG.lastIndex = i;
+    const match = ANY_TAG.exec(html);
+    const end = match ? findTagEnd(html, i) : -1;
+    if (!match || end === -1) {
+      i++;
+      continue;
+    }
+    const [, slash, rawName] = match;
+    const name = rawName.toLowerCase();
+    const tag = html.slice(i, end);
+    tags.push({ start: i, end });
+    // Line breaks in attribute values are content, too.
+    for (let j = i; j < end; j++) {
+      if (html[j] === '"' || html[j] === "'") {
+        const close = html.indexOf(html[j], j + 1);
+        if (close === -1) {
+          break;
+        }
+        addBreaks(j, close);
+        j = close;
+      }
+    }
+    if (slash) {
+      let index = stack.length - 1;
+      while (index >= 0 && stack[index].name !== name) {
+        index--;
+      }
+      if (index >= 0) {
+        const open = stack[index];
+        stack.length = index;
+        if (open.hugged || tag.includes("\n")) {
+          hugged.push({ start: open.start, end });
+        }
+      }
+    } else if (!tag.endsWith("/>") && !VOID_ELEMENTS.has(name)) {
+      stack.push({
+        name,
+        start: i,
+        // `>` moved to the next line and directly followed by content.
+        hugged:
+          /\n[ \t]*>$/.test(tag) &&
+          !/^(?:\n|<\/|$)/.test(html.slice(end, end + 2)),
+      });
+      if (RAW_TEXT_ELEMENTS.has(name)) {
+        const close = html.toLowerCase().indexOf(`</${name}`, end);
+        const stop = close === -1 ? html.length : close;
+        addBreaks(end, stop);
+        i = stop;
+        continue;
+      }
+    }
+    i = end;
+  }
+
+  const hasBreak = (/** @type {{ start: number, end: number }} */ range) => {
+    let low = 0;
+    let high = breaks.length;
+    while (low < high) {
+      const mid = (low + high) >> 1;
+      if (breaks[mid] < range.start) {
+        low = mid + 1;
+      } else {
+        high = mid;
+      }
+    }
+    return low < breaks.length && breaks[low] < range.end;
+  };
+  // Outermost elements only; nested ones are part of them.
+  /** @type {{ start: number, end: number }[]} */
+  const ranges = [];
+  for (const range of hugged
+    .filter((range) => !hasBreak(range))
+    .sort((a, b) => a.start - b.start)) {
+    if (range.start >= (ranges.at(-1)?.end ?? 0)) {
+      ranges.push(range);
+    }
+  }
+  if (ranges.length === 0) {
+    return html;
+  }
+
+  let result = "";
+  let copied = 0;
+  let next = 0;
+  for (const tag of tags) {
+    while (next < ranges.length && ranges[next].end <= tag.start) {
+      next++;
+    }
+    if (next === ranges.length) {
+      break;
+    }
+    const text = html.slice(tag.start, tag.end);
+    if (tag.start < ranges[next].start || !text.includes("\n")) {
+      continue;
+    }
+    result +=
+      html.slice(copied, tag.start) +
+      text.replace(/[ \t]*\n[ \t]*/g, " ").replace(/ >$/, ">");
+    copied = tag.end;
+  }
+  return result + html.slice(copied);
 }
 
 /**
@@ -1188,13 +1378,24 @@ export function toSourcePosition(position, { html, source, state }) {
 }
 
 /**
- * Turns renamed ViewHelper tags (`f-qz-if`) back into `f:if`.
+ * Turns renamed ViewHelper tags (`f-if`, `f-qz-if`) back into `f:if`.
  *
  * @param {string} text
- * @param {string} nonce
+ * @param {{ nonce: string, namespaces: readonly string[] }} state
  */
-function restoreTagNames(text, nonce) {
-  return text.replace(new RegExp(`([a-zA-Z0-9.]+)-${nonce}-`, "g"), "$1:");
+function restoreTagNames(text, { nonce, namespaces }) {
+  const restored = text.replace(
+    new RegExp(`([a-zA-Z0-9.]+)-${nonce}-`, "g"),
+    "$1:",
+  );
+  if (namespaces.length === 0) {
+    return restored;
+  }
+  const tags = new RegExp(
+    `(</?)(${namespaces.map(escapeRegExp).join("|")})-`,
+    "g",
+  );
+  return restored.replace(tags, "$1$2:");
 }
 
 /**
@@ -1204,8 +1405,8 @@ function restoreTagNames(text, nonce) {
  * @param {string} text
  * @param {RestoreState} state
  */
-export const revealPlaceholders = (text, { nonce, fragments }) =>
-  restoreTagNames(text, nonce).replace(
+export const revealPlaceholders = (text, { nonce, namespaces, fragments }) =>
+  restoreTagNames(text, { nonce, namespaces }).replace(
     new RegExp(`${nonce}(\\d+)_*${nonce}`, "g"),
     (match, id) => fragments[Number(id)]?.source ?? match,
   );

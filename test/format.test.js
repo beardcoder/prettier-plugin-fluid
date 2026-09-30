@@ -49,7 +49,7 @@ describe("layout", () => {
   test("EXT:form ViewHelpers that render children are blocks", async () => {
     await assertFormat(
       `<f:section name="Main">\n<formvh:renderAllFormValues renderable="{form.formDefinition}" as="formValue">{f:render(section: 'FieldValue', arguments: '{_all}')}</formvh:renderAllFormValues>\n</f:section>`,
-      `<f:section name="Main">\n  <formvh:renderAllFormValues\n    renderable="{form.formDefinition}"\n    as="formValue"\n  >\n    {f:render(section: 'FieldValue', arguments: '{_all}')}\n  </formvh:renderAllFormValues>\n</f:section>\n`,
+      `<f:section name="Main">\n  <formvh:renderAllFormValues renderable="{form.formDefinition}" as="formValue">\n    {f:render(section: 'FieldValue', arguments: '{_all}')}\n  </formvh:renderAllFormValues>\n</f:section>\n`,
     );
   });
 
@@ -112,6 +112,36 @@ describe("layout", () => {
       `<span><!-- display: inline --><f:if condition="{a}">x</f:if></span>\n`,
     );
   });
+
+  test("too long inline elements stay on one line", async () => {
+    await assertFormat(
+      `<h2>\n<strong class="block text-[clamp(3rem,2.25rem+3.5vw,5.5rem)] leading-[0.9]"><trh:format.inlineMarkup>{record.header}</trh:format.inlineMarkup></strong>\n</h2>`,
+      `<h2>\n  <strong class="block text-[clamp(3rem,2.25rem+3.5vw,5.5rem)] leading-[0.9]"><trh:format.inlineMarkup>{record.header}</trh:format.inlineMarkup></strong>\n</h2>\n`,
+    );
+    await assertFormat(
+      `<p>Lorem ipsum dolor sit amet, consectetur elit, <f:link.page pageUid="{uid}" class="underline hover:text-accent">Datenschutz</f:link.page>, sed do.</p>`,
+      `<p>\n  Lorem ipsum dolor sit amet, consectetur elit,\n  <f:link.page pageUid="{uid}" class="underline hover:text-accent">Datenschutz</f:link.page>, sed do.\n</p>\n`,
+    );
+  });
+
+  test("inline elements with line breaks in their content keep Prettier's layout", async () => {
+    const source = `<span class="aaaaaaaaaaaaaaaaaaaaaaaaaaaa"\n  >Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod\n  tempor</span\n>\n`;
+    await assertFormat(source, source);
+    const value = `<span\n  title="a\n  b"\n  class="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"\n  >x</span\n>\n`;
+    await assertFormat(value, value);
+  });
+
+  test("ViewHelper tags keep their width next to custom elements", async () => {
+    // Templates that already use such tag names still restore correctly.
+    await assertFormat(
+      `<div><f-if>a</f-if><f:if condition="{b}"><p>b</p></f:if></div>`,
+      `<div>\n  <f-if>a</f-if><f:if condition="{b}"><p>b</p></f:if>\n</div>\n`,
+    );
+    await assertFormat(
+      `<f:link.page pageUid="{uid}" class="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" />`,
+      `<f:link.page pageUid="{uid}" class="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" />\n`,
+    );
+  });
 });
 
 describe("custom ViewHelpers", () => {
@@ -120,7 +150,7 @@ describe("custom ViewHelpers", () => {
   test("are recognized and inline by default", async () => {
     await assertFormat(
       source,
-      `<div>\n  <my:card.teaser item="{item}"\n    >{item.title -> my:format.crop(length: 3)}</my:card.teaser\n  >\n</div>\n`,
+      `<div>\n  <my:card.teaser item="{item}">{item.title -> my:format.crop(length: 3)}</my:card.teaser>\n</div>\n`,
     );
   });
 
@@ -173,7 +203,7 @@ describe("shorthand syntax", () => {
   });
 
   test("escaped quotes in ViewHelper arguments outside of expressions", async () => {
-    const source = `<f:link.typolink\n  parameter="{link}"\n  textWrap="<span class=\\"icon\\">|</span>"\n/>\n`;
+    const source = `<f:link.typolink parameter="{link}" textWrap="<span class=\\"icon\\">|</span>" />\n`;
     await assertFormat(source, source);
   });
 
@@ -559,7 +589,7 @@ describe("other plugins", () => {
   test("prettier-plugin-organize-attributes", async () => {
     await assertFormat(
       `<f:link.page pageUid="{uid}" class="btn" additionalAttributes="{rel: 'x'}">x</f:link.page>`,
-      `<f:link.page class="btn" additionalAttributes="{rel: 'x'}" pageUid="{uid}"\n  >x</f:link.page\n>\n`,
+      `<f:link.page class="btn" additionalAttributes="{rel: 'x'}" pageUid="{uid}">x</f:link.page>\n`,
       {
         plugins: [fluid, "prettier-plugin-organize-attributes"],
         attributeSort: "ASC",

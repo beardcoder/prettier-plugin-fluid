@@ -301,6 +301,10 @@ The plugin also supports `requirePragma` and `insertPragma`
     `false`.
 - A block ViewHelper inside inline content may add whitespace, just as Prettier
   does around block elements.
+- An inline element that does not fit the print width stays on one line, as
+  breaking it would add whitespace. Prettier instead moves the `>` of its tags
+  to the next line (`</strong\n>`); that layout is only kept when the
+  element's content has line breaks of its own.
 - Multi-line Fluid expressions keep their line breaks. A tag containing one
   always puts each attribute on its own line, and the expression's lines move
   along with the tag's indentation.
@@ -312,13 +316,15 @@ The plugin also supports `requirePragma` and `insertPragma`
    the same width. The expressions are found with the grammar of Fluid's
    `SPLIT_PATTERN_SHORTHANDSYNTAX`. Equal expressions share a placeholder, so
    dynamic tag names like `<h{level}>…</h{level}>` stay balanced.
-2. `<f:comment>` elements become opaque HTML comments. Block ViewHelpers get a
-   hidden `<!-- display: block -->` hint. Script and style blocks that contain
-   Fluid get a hidden `<!-- prettier-ignore -->`.
+2. `<f:comment>` elements become opaque HTML comments. ViewHelper tags become
+   custom elements of the same width (`<f:if>` → `<f-if>`). Block ViewHelpers
+   get a hidden `<!-- display: block -->` hint. Script and style blocks that
+   contain Fluid get a hidden `<!-- prettier-ignore -->`.
 3. The result is formatted with `parser: "html"`, which uses whichever `html`
    parser the loaded plugins provide.
-4. The hints are removed and every placeholder is replaced by the original
-   code. A missing placeholder is an error. Parse errors are mapped back to the
+4. Inline elements Prettier broke only inside their tags are joined into one
+   line again. The hints are removed and every placeholder is replaced by the
+   original code. A missing placeholder is an error. Parse errors are mapped back to the
    template's own line and column.
 
 ## Development

@@ -159,6 +159,21 @@ moves them to the front.
 All standard Prettier options apply, such as `printWidth`, `tabWidth`,
 `bracketSameLine` and `singleAttributePerLine`.
 
+The package ships TypeScript declarations. In a `prettier.config.ts`, the
+plugin's options are typed with `FluidOptions`:
+
+```ts
+import type { Config } from 'prettier';
+import type { FluidOptions } from '@beardcoder/prettier-plugin-fluid';
+
+const config: Config & FluidOptions = {
+  plugins: ['@beardcoder/prettier-plugin-fluid'],
+  fluidArraySpacing: 'always',
+};
+
+export default config;
+```
+
 ### Root tag
 
 TYPO3 recommends `<fluid data-namespace-typo3-fluid="true" …>` as the root of
@@ -347,18 +362,48 @@ The project uses [Bun](https://bun.sh) for development:
 
 ```sh
 bun install
-bun run check                     # types (tsc on JSDoc), formatting, tests, strict corpus check
-UPDATE=1 bun test                 # regenerate test/fixtures/*.output.html
-bun run test:node                 # all test files on Node.js (node --test)
+bun run build                     # compile src/ to dist/ (deletes dist/ first)
+bun run typecheck                 # tsc --noEmit
+bun run lint                      # oxlint (type-aware), `lint:fix` applies fixes
+bun run format                    # oxfmt, `format:check` only checks
+bun run check                     # types, lint, formatting, build + tests, strict corpus check
+UPDATE=1 bun run test             # regenerate test/fixtures/*.output.html
+bun run test:node                 # build, then all test files on Node.js (node --test)
 bun run corpus path/to/templates  # lossless + idempotency check on real templates
 bun run corpus:strict             # strict check of the versioned corpus in test/corpus
-bun run test:package              # smoke test of the packed npm package
+bun run test:package              # build, then smoke test of the packed npm package
 ```
 
-The plugin itself is plain ESM without Bun-specific APIs, since Prettier
-usually runs on Node.js. The tests use `node:test` so they run on both
-runtimes, and CI covers Node 20, 22 and 24, and Prettier 3.0.0 and the latest
-3.x release.
+The plugin is written in TypeScript (`src/`) and compiled by `tsc` to ESM
+JavaScript with type declarations in `dist/`, which is not checked in. The
+npm package contains only `dist/` (plus `README.md`, `LICENSE` and
+`CHANGELOG.md`), so users need neither Bun nor TypeScript, and
+`@prettier/html-tags` as its only dependency. `bun run build` deletes `dist/`
+before compiling, so no stale modules remain; `npm pack` and `npm publish`
+build via `prepack`. The test, corpus and package scripts build first, so they
+always check freshly compiled code. Building needs Node.js 20.10 or later (for
+TypeScript 7's `tsc`); the built plugin runs on Node.js 20 and later.
+
+The source is split by responsibility:
+
+| Module                     | Responsibility                                                          |
+| -------------------------- | ----------------------------------------------------------------------- |
+| `index.ts`                 | Plugin object: `fluid` parser and printer, public exports               |
+| `options.ts`               | Language registration, Fluid options with defaults, `FluidOptions`      |
+| `format.ts`                | Nested Prettier call, forwarded options, root tag, error positions      |
+| `elements.ts`              | Element categories (void, raw text, assets) and default ViewHelpers     |
+| `lexer.ts`                 | Recognizes Fluid/HTML syntax and returns ranges into the unchanged text |
+| `preprocess.ts`            | Protection rules; placeholders, hints and the intermediate HTML         |
+| `restore.ts`               | Restoring placeholders and tags, occurrence check, quotes, indentation  |
+| `arrays.ts`                | `fluidArraySpacing`                                                     |
+| `positions.ts`, `types.ts` | Position mapping for errors; shared data structures                     |
+
+Void elements come from [`@prettier/html-tags`](https://github.com/prettier/html-tags),
+except for historical ones (`basefont`, `bgsound`, `command`, `frame`,
+`image`, `keygen`, `param`), which the plugin keeps treating as ordinary
+elements; which elements are raw text, assets or block ViewHelpers are rules
+of this plugin. The tests use `node:test` so they run on both runtimes, and
+CI covers Node 20, 22 and 24, and Prettier 3.0.0 and the latest 3.x release.
 
 Fixtures in `test/fixtures` are formatted with this plugin alone, unless their
 `<name>.options.json` lists further `plugins` they are an integration test
@@ -380,16 +425,21 @@ and finding no template at all fail, too. `bun run corpus:strict` checks the
 small corpus of regression templates in `test/corpus` this way; `bun run
 check` and CI include it.
 
-`bun run test:package` packs the package with `npm pack --ignore-scripts`
-(no build step is needed; `prepare` would only install Git hooks) into a
-temporary directory and installs the tarball with Prettier from the registry
-into a temporary consumer project. There it imports the plugin by its package
-name, checks the exports, formats templates twice, detects `.fluid` and
-`.fluid.html` by file name, formats `.html` with `parser: "fluid"` and runs
-Prettier's CLI. It also checks that the package contains all source files
-and no tests or other development files, and that the repository is left as
-it was. Nothing is published. It needs network access to the npm registry;
-`--prettier <version>` selects the Prettier version.
+`bun run test:package` builds the package, packs it with
+`npm pack --ignore-scripts` (`prepare` would install Git hooks) into a
+temporary directory and installs the tarball with its dependencies, Prettier
+and TypeScript from the registry into a temporary consumer project. There it
+imports the plugin by its package name, checks the exports (internal modules
+are not importable), formats templates twice, detects `.fluid` and
+`.fluid.html` by file name, formats `.html` with `parser: "fluid"`, runs
+Prettier's CLI and type-checks a TypeScript file using the plugin and
+`FluidOptions` with `tsc --noEmit`. It also checks that a rebuild leaves no output of removed modules,
+that the package contains exactly the compiled modules and declarations of
+`src/` and no sources, tests or other development files, and that the
+repository is left as it was.
+Nothing is published. It needs network access to the npm registry;
+`--prettier <version>` selects the Prettier version, `--package-dir <dir>`
+another checkout.
 
 ### Commit messages
 
@@ -430,7 +480,7 @@ automatic run after CI and for a manual run:
    is on `main` and points to a commit whose `package.json` has this name and
    version. If npm or GitHub lack the release, exactly the tagged commit is
    checked out into a separate worktree, checked again and published or
-   released from there.
+   released from there; `dist/` is built there from the tagged sources.
 
 `npm view` and `gh release view` must answer "not found" for a missing
 release; any other error (authentication, network, …) aborts the job instead

@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 120,
+  "tabWidth": 2,
+  "useTabs": false,
+  "semi": true,
+  "singleQuote": true,
+  "trailingComma": "all",
+  "arrowParens": "always",
+  "endOfLine": "lf",
+  "sortImports": {
+    "groups": ["builtin", "external", ["internal", "subpath"], "parent", ["sibling", "index"], "unknown"],
+    "newlinesBetween": true
+  },
+  "sortPackageJson": true,
+  "overrides": [
+    {
+      "files": ["*.md"],
+      "options": { "printWidth": 80 }
+    }
+  ],
+  "ignorePatterns": ["test/fixtures/", "test/corpus/", "bun.lock", "dist/"]
+}

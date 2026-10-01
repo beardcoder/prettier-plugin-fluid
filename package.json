@@ -3,53 +3,72 @@
   "version": "0.11.1",
   "description": "Prettier plugin for TYPO3 Fluid templates that plays nicely with other HTML plugins",
   "keywords": [
-    "prettier",
-    "prettier-plugin",
-    "typo3",
     "fluid",
     "fluid-templates",
-    "formatter"
+    "formatter",
+    "prettier",
+    "prettier-plugin",
+    "typo3"
   ],
   "homepage": "https://github.com/beardcoder/prettier-plugin-fluid#readme",
   "bugs": {
     "url": "https://github.com/beardcoder/prettier-plugin-fluid/issues"
   },
+  "license": "MIT",
+  "author": "Markus Sommer (https://github.com/beardcoder)",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/beardcoder/prettier-plugin-fluid.git"
   },
-  "license": "MIT",
-  "author": "Markus Sommer (https://github.com/beardcoder)",
-  "type": "module",
-  "exports": {
-    ".": "./src/index.js",
-    "./package.json": "./package.json"
-  },
-  "main": "src/index.js",
   "files": [
-    "src",
+    "dist",
     "CHANGELOG.md"
   ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "check": "bun run typecheck && bun run format:check && bun test && bun run corpus:strict",
-    "corpus": "bun scripts/check-corpus.js",
-    "corpus:strict": "bun scripts/check-corpus.js --strict test/corpus",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "build": "node scripts/build.js",
+    "check": "bun run typecheck && bun run lint && bun run format:check && bun run test && bun run corpus:strict",
+    "corpus": "bun run build && bun scripts/check-corpus.js",
+    "corpus:strict": "bun run build && bun scripts/check-corpus.js --strict test/corpus",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "prepack": "bun run build",
     "prepare": "husky",
     "prepublishOnly": "bun run check",
     "release": "release-it",
-    "test": "bun test",
-    "test:node": "node --test",
+    "test": "bun run build && bun test",
+    "test:node": "bun run build && node --test",
     "test:package": "node scripts/check-package.js",
-    "typecheck": "tsc"
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix"
+  },
+  "dependencies": {
+    "@prettier/html-tags": "^2.2.0"
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.3",
     "@commitlint/config-conventional": "^21.2.3",
     "@release-it/conventional-changelog": "^12.0.2",
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "@types/node": "^20.19.43",
     "conventional-changelog-conventionalcommits": "^10.4.0",
     "husky": "^9.1.7",
+    "oxfmt": "^0.71.0",
+    "oxlint": "^1.86.0",
+    "oxlint-tsgolint": "^7.0.2003",
     "prettier": "^3.9.9",
     "prettier-plugin-organize-attributes": "^1.0.0",
     "prettier-plugin-tailwindcss": "^0.8.1",
@@ -61,9 +80,6 @@
   },
   "engines": {
     "node": ">=20"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "packageManager": "bun@1.4.2"
 }

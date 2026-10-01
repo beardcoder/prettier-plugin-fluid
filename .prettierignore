@@ -1,4 +1,0 @@
-# Fixtures must stay exactly as written.
-test/fixtures/
-test/corpus/
-bun.lock

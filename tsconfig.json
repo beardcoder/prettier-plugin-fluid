@@ -1,11 +1,14 @@
 {
   "compilerOptions": {
-    "allowJs": true,
-    "checkJs": true,
-    "noEmit": true,
     "strict": true,
-    "module": "nodenext",
-    "target": "es2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "rootDir": "src",
+    "outDir": "dist",
+    "declaration": true,
+    "noEmitOnError": true,
+    "types": ["node"],
     "skipLibCheck": true
   },
   "include": ["src"]

@@ -56,6 +56,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - run: bun install --frozen-lockfile
+      # Builds dist/ with this Node version and tests it.
       - run: bun run test:node
 
   package:
@@ -66,7 +67,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        prettier: ["3.0.0", "3"]
+        prettier: ['3.0.0', '3']
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
@@ -74,6 +75,7 @@ jobs:
         with:
           node-version: 24
       - run: bun install --frozen-lockfile
+      # Builds dist/ itself before packing.
       - run: bun run test:package --prettier ${{ matrix.prettier }}
 
   prettier-compat:
@@ -84,10 +86,13 @@ jobs:
       matrix:
         # Oldest supported and latest release of the supported major version
         # of the peer dependency (^3.0.0).
-        prettier: ["3.0.0", "3"]
+        prettier: ['3.0.0', '3']
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
+      # Built with the Prettier types the package is developed and published
+      # with; the tests then run it with the Prettier version under test.
+      - run: bun run build
       - run: bun add --no-save prettier@${{ matrix.prettier }}
       - run: bun test

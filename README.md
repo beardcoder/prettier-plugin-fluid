@@ -335,12 +335,14 @@ The plugin also supports `requirePragma` and `insertPragma`
   content at the tag's indentation (or after the last attribute with
   `bracketSameLine`). Closing tags stay on one line:
 
+  <!-- prettier-ignore -->
   ```html
   <f:link.page
     pageUid="{uid}"
     class="underline hover:text-accent"
   >Privacy policy</f:link.page>
   ```
+
 - Multi-line Fluid expressions keep their line breaks. A tag containing one
   always puts each attribute on its own line, and the expression's lines move
   along with the tag's indentation.

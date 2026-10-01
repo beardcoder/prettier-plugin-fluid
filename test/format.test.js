@@ -1,14 +1,13 @@
-import assert from 'node:assert/strict';
+import { describe, expect, test } from 'bun:test';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { describe, test } from 'node:test';
 import { stripVTControlCharacters } from 'node:util';
 
 import * as prettier from 'prettier';
 
-import fluid from '../dist/index.js';
-import { preprocess } from '../dist/preprocess.js';
-import { restore } from '../dist/restore.js';
+import fluid from '../src/index.ts';
+import { preprocess } from '../src/preprocess.ts';
+import { restore } from '../src/restore.ts';
 
 const ALL_PLUGINS = [fluid, 'prettier-plugin-organize-attributes', 'prettier-plugin-tailwindcss'];
 
@@ -57,9 +56,16 @@ const format = (source, options = {}) => prettier.format(source, { parser: 'flui
 
 async function assertFormat(source, expected, options) {
   const output = await format(source, options);
-  assert.equal(output, expected);
-  assert.equal(await format(output, options), output, 'formatting must be idempotent');
+  expect(output).toBe(expected);
+  expect(await format(output, options), 'formatting must be idempotent').toBe(output);
 }
+
+/** The error `promise` rejects with; fails the test if it resolves. */
+const rejection = (promise) =>
+  promise.then(
+    () => expect.unreachable('expected an error'),
+    (error) => error,
+  );
 
 describe('layout', () => {
   test('structural ViewHelpers are blocks', async () => {
@@ -414,7 +420,7 @@ describe('attribute quotes', () => {
     // Simulate Prettier printing the value with double quotes next to a
     // single quote it cannot move.
     const broken = html.replace(/a='([^']*)'/, `a="$1 it's"`);
-    assert.throws(() => restore(broken, state), /cannot quote the attribute value/);
+    expect(() => restore(broken, state)).toThrow(/cannot quote the attribute value/);
   });
 });
 
@@ -471,11 +477,8 @@ describe('fluidIndentRoot: false', () => {
 
   test('errors point at the right line', async () => {
     const source = `<fluid data-namespace-typo3-fluid="true">\n\n<div>\n  <section></div>\n</fluid>`;
-    await assert.rejects(format(source, options), (error) => {
-      assert.equal(error.loc.start.line, 4);
-
-      return true;
-    });
+    const error = await rejection(format(source, options));
+    expect(error.loc.start.line).toBe(4);
   });
 
   test('keeps a DOCTYPE and comments before the root', async () => {
@@ -504,8 +507,8 @@ describe('fluidIndentRoot: false', () => {
     ]) {
       const source = `${tag}\n<p>x</p>\n</div>`;
       const output = await format(source, options);
-      assert.equal(output, await format(source));
-      assert.match(output, /\n {2}<p>x<\/p>\n/);
+      expect(output).toBe(await format(source));
+      expect(output).toMatch(/\n {2}<p>x<\/p>\n/);
     }
   });
 
@@ -517,12 +520,9 @@ describe('fluidIndentRoot: false', () => {
       return { line: lines.length, column: lines.at(-1).length + 1 };
     };
     const assertErrorAt = async (source, expected, extra = {}) => {
-      await assert.rejects(format(source, { ...options, ...extra }), (error) => {
-        assert.deepEqual(error.loc.start, expected);
-        assert.match(stripVTControlCharacters(error.message), new RegExp(`\\(${expected.line}:${expected.column}\\)`));
-
-        return true;
-      });
+      const error = await rejection(format(source, { ...options, ...extra }));
+      expect(error.loc.start).toEqual(expected);
+      expect(stripVTControlCharacters(error.message)).toMatch(new RegExp(`\\(${expected.line}:${expected.column}\\)`));
     };
 
     test('in the content', async () => {
@@ -553,24 +553,21 @@ describe('fluidIndentRoot: false', () => {
     test('in a multi-line opening tag', async () => {
       const tag = `<fluid\n  data-namespace-typo3-fluid="true"\n  a="&#xzz;">`;
       // Where the html parser puts the error in the tag on its own.
-      const inTag = await prettier.format(`${tag}</fluid>`, { parser: 'html' }).then(assert.fail, (error) => error.loc);
-      assert.ok(inTag.end.line > 1);
+      const inTag = (await rejection(prettier.format(`${tag}</fluid>`, { parser: 'html' }))).loc;
+      expect(inTag.end.line).toBeGreaterThan(1);
       const source = `<!-- a -->\n  <!-- b --> ${tag}\n<p>x</p>\n</fluid>`;
       const start = positionOf(source, '<fluid');
       for (const [text, extra] of [
         [source, {}],
         [source.replaceAll('\n', '\r\n'), { endOfLine: 'crlf' }],
       ]) {
-        await assert.rejects(format(text, { ...options, ...extra }), (error) => {
-          assert.deepEqual(error.loc, {
-            start,
-            end: {
-              line: start.line + inTag.end.line - 1,
-              column: inTag.end.column,
-            },
-          });
-
-          return true;
+        const error = await rejection(format(text, { ...options, ...extra }));
+        expect(error.loc).toEqual({
+          start,
+          end: {
+            line: start.line + inTag.end.line - 1,
+            column: inTag.end.column,
+          },
         });
       }
     });
@@ -599,9 +596,9 @@ describe('f:asset.css / f:asset.script', () => {
     const output = await format(
       `<style>.x { margin: 0; }</style><f:asset.css identifier="a">.a { margin: 0; }</f:asset.css><script>foo( 1 )</script>`,
     );
-    assert.match(output, /^<style>\n {2}\.x \{/);
-    assert.match(output, /<f:asset\.css identifier="a">\n {2}\.a \{\n {4}margin: 0;\n {2}\}\n<\/f:asset\.css>/);
-    assert.match(output, /<script>\n {2}foo\(1\);\n<\/script>\n$/);
+    expect(output).toMatch(/^<style>\n {2}\.x \{/);
+    expect(output).toMatch(/<f:asset\.css identifier="a">\n {2}\.a \{\n {4}margin: 0;\n {2}\}\n<\/f:asset\.css>/);
+    expect(output).toMatch(/<script>\n {2}foo\(1\);\n<\/script>\n$/);
   });
 
   test('content with Fluid syntax or CDATA is kept as written', async () => {
@@ -647,9 +644,9 @@ describe('f:asset.css / f:asset.script', () => {
       const reference = await format(`<f:render additionalAttributes="${value}" />`, options);
       const expected = /additionalAttributes="([^"]*)"/.exec(reference)[1];
       if (fluidArraySpacing === 'preserve') {
-        assert.equal(expected, value);
+        expect(expected).toBe(value);
       } else {
-        assert.notEqual(expected, value);
+        expect(expected).not.toBe(value);
       }
       await assertFormat(
         `<f:asset.script identifier="a" additionalAttributes="${value}">let x=1</f:asset.script>`,
@@ -675,8 +672,7 @@ describe('f:asset.css / f:asset.script', () => {
       }
       // Attributes of plain HTML tags are no ViewHelper arguments.
       const html = `<f:asset.script identifier="a">let x = 1;</f:asset.script>\n<script data-x="${value}">\n  let y = 1;\n</script>\n<style data-x="${value}"></style>\n`;
-      assert.equal(
-        await format(html, options),
+      expect(await format(html, options)).toBe(
         html.replace(
           `<f:asset.script identifier="a">let x = 1;</f:asset.script>`,
           `<f:asset.script identifier="a">\n  let x = 1;\n</f:asset.script>`,
@@ -705,27 +701,26 @@ describe('fluidFinalNewline', () => {
 describe('pragma', () => {
   test('requirePragma', async () => {
     const source = `<div><f:if condition="{a}">x</f:if></div>`;
-    assert.equal(await format(source, { requirePragma: true }), source);
-    assert.match(await format(`<!-- @format -->\n${source}`, { requirePragma: true }), /\n  <f:if/);
+    expect(await format(source, { requirePragma: true })).toBe(source);
+    expect(await format(`<!-- @format -->\n${source}`, { requirePragma: true })).toMatch(/\n  <f:if/);
   });
 
   test('insertPragma', async () => {
-    assert.equal(await format(`<p>a</p>`, { insertPragma: true }), `<!-- @format -->\n\n<p>a</p>\n`);
+    expect(await format(`<p>a</p>`, { insertPragma: true })).toBe(`<!-- @format -->\n\n<p>a</p>\n`);
   });
 });
 
 describe('robustness', () => {
   test('CRLF line endings', async () => {
-    assert.equal(
+    expect(
       await format(`<f:if condition="{a}">\r\n<p>x</p></f:if>`, {
         endOfLine: 'crlf',
       }),
-      `<f:if condition="{a}">\r\n  <p>x</p>\r\n</f:if>\r\n`,
-    );
+    ).toBe(`<f:if condition="{a}">\r\n  <p>x</p>\r\n</f:if>\r\n`);
   });
 
   test('empty file', async () => {
-    assert.equal(await format(''), '');
+    expect(await format('')).toBe('');
   });
 
   test('placeholders never collide with template content', async () => {
@@ -771,8 +766,8 @@ describe('robustness', () => {
               const element = `<${tag} class="b a">${body}</${tag}>`;
               const source = `<div>\n${comment}\n${element}\n</div>\n`;
               const output = await format(source, { plugins });
-              assert.ok(output.includes(`${comment}\n  ${element}\n`), `body must be kept as written:\n${output}`);
-              assert.equal(await format(output, { plugins }), output);
+              expect(output, `body must be kept as written:\n${output}`).toContain(`${comment}\n  ${element}\n`);
+              expect(await format(output, { plugins })).toBe(output);
             }
           }
         });
@@ -825,17 +820,14 @@ describe('robustness', () => {
 
   test('parse errors point at the Fluid source', async () => {
     const source = `<div>\n  {some.long -> f:format.raw()}\n  <f:if condition="{a}"><p>{b}</p></f:if>\n  <section class="{c}"></div>`;
-    await assert.rejects(format(source), (error) => {
-      // The code frame is syntax-highlighted when running in a color terminal.
-      const message = stripVTControlCharacters(error.message);
-      assert.deepEqual(error.loc.start, { line: 4, column: 24 });
-      assert.match(message, /^Unexpected closing tag "div"/);
-      assert.match(message, /Fluid templates must be well-nested HTML/);
-      // code frame shows the original template, not placeholders
-      assert.match(message, /> 4 \|   <section class="\{c\}"><\/div>/);
-
-      return true;
-    });
+    const error = await rejection(format(source));
+    // The code frame is syntax-highlighted when running in a color terminal.
+    const message = stripVTControlCharacters(error.message);
+    expect(error.loc.start).toEqual({ line: 4, column: 24 });
+    expect(message).toMatch(/^Unexpected closing tag "div"/);
+    expect(message).toMatch(/Fluid templates must be well-nested HTML/);
+    // code frame shows the original template, not placeholders
+    expect(message).toMatch(/> 4 \|   <section class="\{c\}"><\/div>/);
   });
 
   test('conditional wrappers are kept as written', async () => {
@@ -858,14 +850,14 @@ describe('robustness', () => {
   test('conditional opening tags in f:then/f:else are kept as written', async () => {
     const source = `<table><tr><f:if condition="{header}"><f:then><th></f:then><f:else><td></f:else></f:if>{cell}</tr></table>\n`;
     const output = await format(source);
-    assert.match(output, /<f:if condition="\{header\}"><f:then><th><\/f:then><f:else><td><\/f:else><\/f:if>/);
-    assert.equal(await format(output), output);
+    expect(output).toMatch(/<f:if condition="\{header\}"><f:then><th><\/f:then><f:else><td><\/f:else><\/f:if>/);
+    expect(await format(output)).toBe(output);
   });
 
   test('refuses to drop Fluid code', () => {
     const { html, state } = preprocess(`<p>{a} {b}</p>`);
     const [first] = html.match(new RegExp(`${state.nonce}\\d+_*${state.nonce}`));
-    assert.throws(() => restore(first, state), /dropped Fluid code.*\{b\}/);
+    expect(() => restore(first, state)).toThrow(/dropped Fluid code.*\{b\}/);
   });
 });
 
@@ -881,7 +873,7 @@ describe('HTML elements', () => {
 
   test('void elements are those of @prettier/html-tags', async () => {
     const voids = htmlVoidTags.filter((tag) => !legacy.includes(tag));
-    assert.ok(voids.length >= 13, voids.join());
+    expect(voids.length, voids.join()).toBeGreaterThanOrEqual(13);
     // Tag names are case-insensitive; Prettier prints them in lowercase.
     for (const tag of [...voids, ...voids.map((tag) => tag.toUpperCase())]) {
       await assertFormat(
@@ -892,10 +884,7 @@ describe('HTML elements', () => {
   });
 
   test('historical void tags keep their previous handling', async () => {
-    assert.deepEqual(
-      legacy.filter((tag) => !htmlVoidTags.includes(tag)),
-      [],
-    );
+    expect(legacy.filter((tag) => !htmlVoidTags.includes(tag))).toEqual([]);
     for (const tag of legacy) {
       // Not well-nested without a closing tag: kept as written.
       await assertFormat(wrapped(tag), `${wrapped(tag)}\n`);
@@ -925,8 +914,7 @@ describe('every occurrence of Fluid code is restored', () => {
   test('refuses to drop one of several equal expressions', () => {
     const { html, state } = preprocess(`<p>{x} {x}</p>`);
     const placeholder = placeholderOf(html, state);
-    assert.throws(
-      () => restore(html.replace(placeholder, ''), state),
+    expect(() => restore(html.replace(placeholder, ''), state)).toThrow(
       /prettier-plugin-fluid: formatting dropped Fluid code.*\{x\}/,
     );
   });
@@ -934,13 +922,11 @@ describe('every occurrence of Fluid code is restored', () => {
   test('refuses to duplicate Fluid code', () => {
     const { html, state } = preprocess(`<p>{x} {x}</p>`);
     const placeholder = placeholderOf(html, state);
-    assert.throws(
-      () => restore(html.replace(placeholder, placeholder.repeat(2)), state),
+    expect(() => restore(html.replace(placeholder, placeholder.repeat(2)), state)).toThrow(
       /prettier-plugin-fluid: formatting duplicated Fluid code.*\{x\}/,
     );
     const comment = preprocess(`<f:comment>{x}</f:comment>`);
-    assert.throws(
-      () => restore(comment.html.repeat(2), comment.state),
+    expect(() => restore(comment.html.repeat(2), comment.state)).toThrow(
       /prettier-plugin-fluid: formatting duplicated Fluid code.*<f:comment>/,
     );
   });
@@ -953,8 +939,7 @@ describe('every occurrence of Fluid code is restored', () => {
       `${html}<!--${unknown}-->`,
       html.replace('class="', `class="${unknown} `),
     ]) {
-      assert.throws(
-        () => restore(changed, state),
+      expect(() => restore(changed, state)).toThrow(
         /prettier-plugin-fluid: formatting produced unknown placeholders.*qz99qz/,
       );
     }
@@ -962,8 +947,7 @@ describe('every occurrence of Fluid code is restored', () => {
 
   test('refuses comment placeholders taken out of their comment', () => {
     const { html, state } = preprocess(`<div><f:comment>x</f:comment></div>`);
-    assert.throws(
-      () => restore(html.replace(/<!--|-->/g, ''), state),
+    expect(() => restore(html.replace(/<!--|-->/g, ''), state)).toThrow(
       /prettier-plugin-fluid: formatting dropped Fluid code.*<f:comment>x.*took Fluid code out of its HTML comment/,
     );
   });
@@ -978,8 +962,7 @@ describe('every occurrence of Fluid code is restored', () => {
         },
       },
     };
-    await assert.rejects(
-      format(`<p>{x} {x}</p>`, { plugins: [fluid, dropping] }),
+    await expect(format(`<p>{x} {x}</p>`, { plugins: [fluid, dropping] })).rejects.toThrow(
       /prettier-plugin-fluid: formatting dropped Fluid code.*\{x\}/,
     );
   });
@@ -1003,7 +986,7 @@ describe('every occurrence of Fluid code is restored', () => {
 describe('other plugins', () => {
   test('Tailwind is only skipped for known incompatible versions', () => {
     for (const prettierVersion of ['3.0.0', '3.6.2']) {
-      assert.match(tailwindIncompatibility(prettierVersion, '0.8.1'), /needs Prettier 3\.7/);
+      expect(tailwindIncompatibility(prettierVersion, '0.8.1')).toMatch(/needs Prettier 3\.7/);
     }
     for (const [prettierVersion, tailwindVersion] of [
       ['3.7.0', '0.8.1'],
@@ -1012,7 +995,7 @@ describe('other plugins', () => {
       ['3.0.0', '0.7.0'],
       ['3.0.0', '0.9.0'],
     ]) {
-      assert.equal(tailwindIncompatibility(prettierVersion, tailwindVersion), false);
+      expect(tailwindIncompatibility(prettierVersion, tailwindVersion)).toBe(false);
     }
   });
 
@@ -1027,7 +1010,7 @@ describe('other plugins', () => {
     );
   });
 
-  test('prettier-plugin-tailwindcss', { skip: skipTailwind }, async () => {
+  test.skipIf(Boolean(skipTailwind))('prettier-plugin-tailwindcss', async () => {
     await assertFormat(
       `<div class="p-4 flex {f:if(condition: a, then: 'x')}"></div>`,
       `<div class="{f:if(condition: a, then: 'x')} flex p-4"></div>\n`,
@@ -1048,18 +1031,28 @@ describe('other plugins', () => {
 // Fixtures: test/fixtures/<name>.input.html → <name>.output.html, formatted
 // with this plugin and the optional <name>.options.json. Its "plugins" lists
 // further plugins the fixture is an integration test for; fixtures without
-// them check this plugin alone. Regenerate outputs with `UPDATE=1 npm test`.
-describe('fixtures', async () => {
-  const dir = new URL('fixtures/', import.meta.url);
-  const inputs = (await readdir(dir)).filter((file) => file.endsWith('.input.html'));
+// them check this plugin alone. Regenerate outputs with `UPDATE=1 bun test`.
+// Tests are registered synchronously, so the fixtures are listed beforehand.
+const fixtureDir = new URL('fixtures/', import.meta.url);
+const fixtures = await Promise.all(
+  (await readdir(fixtureDir))
+    .filter((file) => file.endsWith('.input.html'))
+    .map(async (input) => {
+      const optionsUrl = new URL(input.replace('.input.html', '.options.json'), fixtureDir);
 
-  for (const input of inputs) {
-    const optionsUrl = new URL(input.replace('.input.html', '.options.json'), dir);
-    const { plugins = [], ...options } = JSON.parse(await readFile(optionsUrl, 'utf8').catch(() => '{}'));
-    const skip = plugins.includes('prettier-plugin-tailwindcss') && skipTailwind;
-    test(input.replace('.input.html', ''), { skip }, async () => {
-      const source = await readFile(new URL(input, dir), 'utf8');
-      const outputUrl = new URL(input.replace('.input.', '.output.'), dir);
+      return { input, options: JSON.parse(await readFile(optionsUrl, 'utf8').catch(() => '{}')) };
+    }),
+);
+
+describe('fixtures', () => {
+  for (const {
+    input,
+    options: { plugins = [], ...options },
+  } of fixtures) {
+    const skip = plugins.includes('prettier-plugin-tailwindcss') && Boolean(skipTailwind);
+    test.skipIf(skip)(input.replace('.input.html', ''), async () => {
+      const source = await readFile(new URL(input, fixtureDir), 'utf8');
+      const outputUrl = new URL(input.replace('.input.', '.output.'), fixtureDir);
       const fixtureOptions = { ...options, plugins: [fluid, ...plugins] };
       if (process.env.UPDATE) {
         await writeFile(outputUrl, await format(source, fixtureOptions));

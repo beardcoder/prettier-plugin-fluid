@@ -1,7 +1,6 @@
-// The scanner of the compiled plugin (dist/lexer.js): recognized ranges are
+// The scanner of the plugin (src/lexer.ts): recognized ranges are
 // zero-based UTF-16 offsets with an exclusive end, into the unchanged text.
-import assert from 'node:assert/strict';
-import { describe, test } from 'node:test';
+import { describe, expect, test } from 'bun:test';
 
 import {
   findEscapedValues,
@@ -11,7 +10,7 @@ import {
   scanTag,
   scanToken,
   skipQuoted,
-} from '../dist/lexer.js';
+} from '../src/lexer.ts';
 
 /** Every token `scanToken()` finds, scanning like the preprocessor. */
 function tokens(text) {
@@ -33,33 +32,33 @@ describe('shorthand syntax', () => {
   test('nested braces, strings and inline ViewHelpers', () => {
     const expression = `{f:if(condition: '{a: {b: 1}}', then: "{c -> f:format.raw()}", else: {d: '}'})}`;
     const text = `<p>${expression}</p>`;
-    assert.equal(matchShorthand(text, 3), 3 + expression.length);
-    assert.deepEqual(scanToken(text, 3), {
+    expect(matchShorthand(text, 3)).toBe(3 + expression.length);
+    expect(scanToken(text, 3)).toEqual({
       kind: 'shorthand',
       start: 3,
       end: 3 + expression.length,
     });
     // Inner braces are shorthand syntax of their own.
     const inner = text.indexOf('{b');
-    assert.equal(text.slice(inner, matchShorthand(text, inner)), '{b: 1}');
+    expect(text.slice(inner, matchShorthand(text, inner))).toBe('{b: 1}');
   });
 
   test('escaped quotes do not end strings', () => {
     const text = String.raw`x="{f:x(a: 'it\'s }', b: \"y\")}" y`;
     const start = text.indexOf('{');
     const end = matchShorthand(text, start);
-    assert.equal(text.slice(start, end), String.raw`{f:x(a: 'it\'s }', b: \"y\")}`);
+    expect(text.slice(start, end)).toBe(String.raw`{f:x(a: 'it\'s }', b: \"y\")}`);
     const quote = text.indexOf("'");
-    assert.equal(text.slice(quote, skipQuoted(text, quote)), String.raw`'it\'s }'`);
-    assert.equal(skipQuoted(`'open\\'`, 0), -1);
+    expect(text.slice(quote, skipQuoted(text, quote))).toBe(String.raw`'it\'s }'`);
+    expect(skipQuoted(`'open\\'`, 0)).toBe(-1);
   });
 
   test('ternary expressions and text that is no Fluid', () => {
     const ternary = "{(a && b) ? 'x' : 'y'}";
-    assert.equal(matchShorthand(ternary, 0), ternary.length);
+    expect(matchShorthand(ternary, 0)).toBe(ternary.length);
     for (const text of ['{}', '{ not fluid; }', '{a', '{a {b}']) {
-      assert.equal(matchShorthand(text, 0), -1, text);
-      assert.equal(scanToken(text, 0), undefined, text);
+      expect(matchShorthand(text, 0), text).toBe(-1);
+      expect(scanToken(text, 0), text).toBe(undefined);
     }
   });
 
@@ -68,9 +67,9 @@ describe('shorthand syntax', () => {
     const b = '<!-- c --><f:comment>d</f:comment>{z ? 1 : 2}';
     const first = [scanToken(a, 0), scanToken(a, 16)];
     // Interleaved with scans of other text at other positions.
-    assert.deepEqual(tokens(b).length, 3);
-    assert.deepEqual([scanToken(a, 0), scanToken(a, 16)], first);
-    assert.deepEqual(first, [
+    expect(tokens(b).length).toEqual(3);
+    expect([scanToken(a, 0), scanToken(a, 16)]).toEqual(first);
+    expect(first).toEqual([
       { kind: 'shorthand', start: 0, end: 15 },
       { kind: 'shorthand', start: 16, end: 19 },
     ]);
@@ -88,23 +87,28 @@ describe('source ranges', () => {
       '<!-- open',
     ].join('\t');
     const found = tokens(text);
-    assert.deepEqual(
-      found.map(({ kind }) => kind),
-      ['comment', 'cdata', 'fluidComment', 'ignoreRange', 'fluidComment', 'comment'],
-    );
-    assert.deepEqual(
-      found.map(({ start, end }) => text.slice(start, end)),
-      text.split('\t'),
-    );
-    assert.deepEqual(
-      found.map((token) => token.directive),
-      [undefined, undefined, undefined, undefined, 'prettier-ignore', undefined],
-    );
+    expect(found.map(({ kind }) => kind)).toEqual([
+      'comment',
+      'cdata',
+      'fluidComment',
+      'ignoreRange',
+      'fluidComment',
+      'comment',
+    ]);
+    expect(found.map(({ start, end }) => text.slice(start, end))).toEqual(text.split('\t'));
+    expect(found.map((token) => token.directive)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'prettier-ignore',
+      undefined,
+    ]);
   });
 
   test('ViewHelper tags and script/style elements', () => {
     const text = `<f:if condition="{a}"></f:if><script type="x">{b}</SCRIPT>`;
-    assert.deepEqual(scanToken(text, 0), {
+    expect(scanToken(text, 0)).toEqual({
       kind: 'viewHelperTag',
       start: 0,
       end: 5,
@@ -112,39 +116,38 @@ describe('source ranges', () => {
       namespace: 'f',
       name: 'if',
     });
-    assert.equal(scanToken(text, 22).closing, true);
+    expect(scanToken(text, 22).closing).toBe(true);
     const script = text.indexOf('<script');
     const element = scanToken(text, script);
-    assert.equal(element.kind, 'rawTextElement');
-    assert.equal(text.slice(element.start, element.end), `<script type="x">`);
-    assert.equal(text.slice(element.body.start, element.body.end), '{b}');
+    expect(element.kind).toBe('rawTextElement');
+    expect(text.slice(element.start, element.end)).toBe(`<script type="x">`);
+    expect(text.slice(element.body.start, element.body.end)).toBe('{b}');
   });
 
   test('tags, declarations and escaped attribute values', () => {
     const text = `<!DOCTYPE html><h{level} a="x>y"><br/><img`;
-    assert.deepEqual(scanDeclaration(text, 0), {
+    expect(scanDeclaration(text, 0)).toEqual({
       kind: 'declaration',
       start: 0,
       end: 15,
       terminated: true,
     });
     const tag = scanTag(text, 15);
-    assert.equal(tag.name, 'h{level}');
-    assert.equal(text.slice(tag.start, tag.end), `<h{level} a="x>y">`);
-    assert.equal(scanTag(text, tag.end).selfClosing, true);
-    assert.deepEqual(scanTag(text, text.length - 4), {
+    expect(tag.name).toBe('h{level}');
+    expect(text.slice(tag.start, tag.end)).toBe(`<h{level} a="x>y">`);
+    expect(scanTag(text, tag.end).selfClosing).toBe(true);
+    expect(scanTag(text, text.length - 4)).toEqual({
       kind: 'unterminatedTag',
       start: text.length - 4,
       closing: false,
       name: 'img',
     });
-    assert.equal(scanTag(text, 0), undefined);
+    expect(scanTag(text, 0)).toBe(undefined);
 
     const viewHelper = String.raw`<f:x a="<b class=\"i\">" b="c" d='\'' >`;
-    assert.deepEqual(
+    expect(
       findEscapedValues(viewHelper, 0, viewHelper.length).map(({ start, end }) => viewHelper.slice(start, end)),
-      [String.raw`<b class=\"i\">`, String.raw`\'`],
-    );
+    ).toEqual([String.raw`<b class=\"i\">`, String.raw`\'`]);
   });
 });
 
@@ -152,31 +155,29 @@ describe('offsets with CRLF and Unicode', () => {
   test('are UTF-16 offsets into the unchanged text', () => {
     const text = '😀\r\n<f:comment>ä\r\n</f:comment>{x}\r\n<!-- 😀 -->';
     const found = tokens(text);
-    assert.deepEqual(
-      found.map(({ kind, start, end }) => [kind, start, end]),
-      [
-        ['fluidComment', 4, 30],
-        ['shorthand', 30, 33],
-        ['comment', 35, 46],
-      ],
-    );
-    assert.deepEqual(
-      found.map(({ start, end }) => text.slice(start, end)),
-      ['<f:comment>ä\r\n</f:comment>', '{x}', '<!-- 😀 -->'],
-    );
+    expect(found.map(({ kind, start, end }) => [kind, start, end])).toEqual([
+      ['fluidComment', 4, 30],
+      ['shorthand', 30, 33],
+      ['comment', 35, 46],
+    ]);
+    expect(found.map(({ start, end }) => text.slice(start, end))).toEqual([
+      '<f:comment>ä\r\n</f:comment>',
+      '{x}',
+      '<!-- 😀 -->',
+    ]);
   });
 
   test('the root element', () => {
     const text = `<!-- 😀 -->\r\n<html data-namespace-typo3-fluid="true">\r\n<p>ä</p>\r\n</html>\r\n`;
     const root = findRootElement(text);
-    assert.deepEqual(root, {
+    expect(root).toEqual({
       prefix: '<!-- 😀 -->',
       name: 'html',
       openStart: 13,
       openEnd: 53,
       closeStart: 65,
     });
-    assert.equal(text.slice(root.openStart, root.openEnd), `<html data-namespace-typo3-fluid="true">`);
-    assert.equal(text.slice(root.closeStart), '</html>\r\n');
+    expect(text.slice(root.openStart, root.openEnd)).toBe(`<html data-namespace-typo3-fluid="true">`);
+    expect(text.slice(root.closeStart)).toBe('</html>\r\n');
   });
 });

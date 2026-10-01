@@ -1,9 +1,9 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // Formats every Fluid HTML template (*.html, *.fluid.html, *.fluid) below the
 // given directories and verifies that formatting keeps all Fluid code and is
 // idempotent. Usage:
 //
-//   node scripts/check-corpus.js [--strict] [--verbose] path/to/extension [...more paths]
+//   bun scripts/check-corpus.js [--strict] [--verbose] path/to/extension [...more paths]
 //
 // Always fails on lost/changed Fluid code, non-idempotent output (including a
 // failing second pass) and unexpected errors. Also reports:
@@ -21,9 +21,9 @@ import { parseArgs } from 'node:util';
 
 import * as prettier from 'prettier';
 
-import fluid from '../dist/index.js';
-import { containsFluid } from '../dist/lexer.js';
-import { preprocess } from '../dist/preprocess.js';
+import fluid from '../src/index.ts';
+import { containsFluid } from '../src/lexer.ts';
+import { preprocess } from '../src/preprocess.ts';
 
 export const DEFAULT_OPTIONS = {
   parser: 'fluid',
@@ -264,7 +264,7 @@ async function main() {
     },
   });
   if (roots.length === 0) {
-    console.error('Usage: node scripts/check-corpus.js [--strict] [-v] <dir> [...dirs]');
+    console.error('Usage: bun scripts/check-corpus.js [--strict] [-v] <dir> [...dirs]');
 
     return 2;
   }

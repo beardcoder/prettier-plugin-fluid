@@ -377,9 +377,9 @@ bun run build                     # compile src/ to dist/ (deletes dist/ first)
 bun run typecheck                 # tsc --noEmit
 bun run lint                      # oxlint (type-aware), `lint:fix` applies fixes
 bun run format                    # oxfmt, `format:check` only checks
-bun run check                     # types, lint, formatting, build + tests, strict corpus check
+bun run check                     # types, lint, formatting, build, tests, strict corpus check
+bun run test                      # bun test, directly on the TypeScript sources
 UPDATE=1 bun run test             # regenerate test/fixtures/*.output.html
-bun run test:node                 # build, then all test files on Node.js (node --test)
 bun run corpus path/to/templates  # lossless + idempotency check on real templates
 bun run corpus:strict             # strict check of the versioned corpus in test/corpus
 bun run test:package              # build, then smoke test of the packed npm package
@@ -391,8 +391,9 @@ npm package contains only `dist/` (plus `README.md`, `LICENSE` and
 `CHANGELOG.md`), so users need neither Bun nor TypeScript, and
 `@prettier/html-tags` as its only dependency. `bun run build` deletes `dist/`
 before compiling, so no stale modules remain; `npm pack` and `npm publish`
-build via `prepack`. The test, corpus and package scripts build first, so they
-always check freshly compiled code. Building needs Node.js 20.10 or later (for
+build via `prepack`. Tests and the corpus check run the TypeScript sources
+directly with Bun; the package script builds first, so it always checks freshly
+compiled code. Building needs Node.js 20.10 or later (for
 TypeScript 7's `tsc`); the built plugin runs on Node.js 20 and later.
 
 The source is split by responsibility:
@@ -413,8 +414,9 @@ Void elements come from [`@prettier/html-tags`](https://github.com/prettier/html
 except for historical ones (`basefont`, `bgsound`, `command`, `frame`,
 `image`, `keygen`, `param`), which the plugin keeps treating as ordinary
 elements; which elements are raw text, assets or block ViewHelpers are rules
-of this plugin. The tests use `node:test` so they run on both runtimes, and
-CI covers Node 20, 22 and 24, and Prettier 3.0.0 and the latest 3.x release.
+of this plugin. The tests use [`bun:test`](https://bun.com/docs/test). CI runs
+them with Prettier 3.0.0 and the latest 3.x release, and runs the packed
+package with both on Node 20, 22 and 24 (`bun run test:package`).
 
 Fixtures in `test/fixtures` are formatted with this plugin alone, unless their
 `<name>.options.json` lists further `plugins` they are an integration test

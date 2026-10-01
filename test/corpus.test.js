@@ -1,9 +1,8 @@
-import assert from 'node:assert/strict';
+import { afterAll, describe, expect, test } from 'bun:test';
 import { spawnSync } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { parsers } from 'prettier/plugins/html';
@@ -15,7 +14,7 @@ const corpus = fileURLToPath(new URL('corpus/', import.meta.url));
 
 /** @type {string[]} */
 const directories = [];
-after(() => Promise.all(directories.map((dir) => rm(dir, { recursive: true, force: true }))));
+afterAll(() => Promise.all(directories.map((dir) => rm(dir, { recursive: true, force: true }))));
 
 /** @param {Record<string, string>} files */
 async function directory(files) {
@@ -36,8 +35,7 @@ function run(...args) {
 }
 
 describe('protection comparison', () => {
-  const assertViolations = (source, output, expected) =>
-    assert.deepEqual(protectionViolations(source, output), expected);
+  const assertViolations = (source, output, expected) => expect(protectionViolations(source, output)).toEqual(expected);
 
   test('allows reformatting, attribute sorting and line endings', () => {
     assertViolations(
@@ -112,10 +110,10 @@ describe('checkCorpus', () => {
       options: optionsWith(dropping),
       cwd: dir,
     });
-    assert.deepEqual(result.findings.parseErrors, []);
-    assert.equal(result.findings.lossy.length, 1);
-    assert.match(result.findings.lossy[0], /^a\.html: prettier-plugin-fluid: formatting dropped/);
-    assert.equal(result.exitCode, 1);
+    expect(result.findings.parseErrors).toEqual([]);
+    expect(result.findings.lossy.length).toBe(1);
+    expect(result.findings.lossy[0]).toMatch(/^a\.html: prettier-plugin-fluid: formatting dropped/);
+    expect(result.exitCode).toBe(1);
   });
 
   test('errors of the second pass are reported with the file name', async () => {
@@ -132,8 +130,8 @@ describe('checkCorpus', () => {
       options: optionsWith(failing),
       cwd: dir,
     });
-    assert.deepEqual(result.findings.unstable, ['a.html: second pass failed: second pass broke']);
-    assert.equal(result.exitCode, 1);
+    expect(result.findings.unstable).toEqual(['a.html: second pass failed: second pass broke']);
+    expect(result.exitCode).toBe(1);
   });
 
   test('non-idempotent output fails', async () => {
@@ -143,23 +141,20 @@ describe('checkCorpus', () => {
       options: optionsWith(growing),
       cwd: dir,
     });
-    assert.deepEqual(result.findings.unstable, ['a.html']);
-    assert.equal(result.exitCode, 1);
+    expect(result.findings.unstable).toEqual(['a.html']);
+    expect(result.exitCode).toBe(1);
   });
 
   test('the versioned corpus passes in strict mode', async () => {
     const result = await checkCorpus([corpus], { strict: true });
-    assert.ok(result.total >= 3, `${result.total} templates`);
-    assert.deepEqual(
-      [
-        ...result.findings.parseErrors,
-        ...result.findings.lossy,
-        ...result.findings.unstable,
-        ...result.findings.failed,
-      ],
-      [],
-    );
-    assert.equal(result.exitCode, 0);
+    expect(result.total, `${result.total} templates`).toBeGreaterThanOrEqual(3);
+    expect([
+      ...result.findings.parseErrors,
+      ...result.findings.lossy,
+      ...result.findings.unstable,
+      ...result.findings.failed,
+    ]).toEqual([]);
+    expect(result.exitCode).toBe(0);
   });
 });
 
@@ -174,44 +169,43 @@ describe('check-corpus CLI', () => {
     });
     for (const args of [[dir], ['--strict', dir]]) {
       const { status, output } = run(...args);
-      assert.equal(status, 0, output);
-      assert.match(output, /^3 files in /);
+      expect(status, output).toBe(0);
+      expect(output).toMatch(/^3 files in /);
     }
   });
 
   test('only .fluid templates', async () => {
     const dir = await directory({ 'template.fluid': `<p>{a}</p>\n` });
     const { status, output } = run('--strict', dir);
-    assert.equal(status, 0, output);
-    assert.match(output, /^1 files in /);
+    expect(status, output).toBe(0);
+    expect(output).toMatch(/^1 files in /);
   });
 
   test('invalid HTML fails only in strict mode', async () => {
     const dir = await directory({ 'broken.html': `<div><span></div>\n` });
     const tolerant = run(dir);
-    assert.equal(tolerant.status, 0, tolerant.output);
-    assert.match(
-      tolerant.output,
+    expect(tolerant.status, tolerant.output).toBe(0);
+    expect(tolerant.output).toMatch(
       /1 parse errors \(left unformatted\):\n {2}.*broken\.html: Unexpected closing tag "div"/,
     );
     const strict = run('--strict', dir);
-    assert.equal(strict.status, 1, strict.output);
-    assert.match(strict.output, /broken\.html: Unexpected closing tag "div"/);
+    expect(strict.status, strict.output).toBe(1);
+    expect(strict.output).toMatch(/broken\.html: Unexpected closing tag "div"/);
   });
 
   test('no templates fails only in strict mode', async () => {
     const dir = await directory({ 'notes.txt': 'x' });
-    assert.equal(run(dir).status, 0);
+    expect(run(dir).status).toBe(0);
     const strict = run('--strict', dir);
-    assert.equal(strict.status, 1, strict.output);
-    assert.match(strict.output, /^0 files in [\s\S]*FAILED: no templates found/);
+    expect(strict.status, strict.output).toBe(1);
+    expect(strict.output).toMatch(/^0 files in [\s\S]*FAILED: no templates found/);
   });
 
   test('without a path it is a usage error', () => {
     for (const args of [[], ['--strict']]) {
       const { status, output } = run(...args);
-      assert.equal(status, 2);
-      assert.match(output, /^Usage: node scripts\/check-corpus\.js \[--strict\]/);
+      expect(status).toBe(2);
+      expect(output).toMatch(/^Usage: bun scripts\/check-corpus\.js \[--strict\]/);
     }
   });
 });

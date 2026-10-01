@@ -3,12 +3,11 @@
 // log their calls; nothing is published and no real tag or release is made.
 // Like the real `bun run check`, the fake one builds: it writes dist.txt from
 // the checked-out src.txt, and the fake `npm publish` publishes that build.
-import assert from 'node:assert/strict';
+import { afterAll, describe, expect, test } from 'bun:test';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const releaseScript = fileURLToPath(new URL('../scripts/release.js', import.meta.url));
@@ -16,9 +15,9 @@ const NAME = '@example/fluid-release-test';
 
 /** @type {string[]} */
 const directories = [];
-after(() => Promise.all(directories.map((dir) => rm(dir, { recursive: true, force: true }))));
+afterAll(() => Promise.all(directories.map((dir) => rm(dir, { recursive: true, force: true }))));
 
-// The fakes run with the same runtime as the tests (Node.js or Bun).
+// The fakes run with the same runtime as the tests.
 const FAKES = {
   bun: String.raw`
 const { execFileSync } = require("node:child_process");
@@ -245,23 +244,23 @@ const PUBLISH = '--provenance --access public';
 // Each simulation runs several Git and fake commands; Bun's default of 5 s
 // per test is too tight for slow CI machines.
 /** @param {string} name @param {() => Promise<void>} fn */
-const simulate = (name, fn) => test(name, { timeout: 60_000 }, fn);
+const simulate = (name, fn) => test(name, fn, { timeout: 60_000 });
 
 describe('release job', () => {
   simulate('checks, releases and publishes the tagged release commit', async () => {
     const repo = await setup({ published: true, released: true });
     const head = await repo.commit('feat: something new');
     const result = await repo.release({ FAKE_RELEASE: '0.2.0' });
-    assert.equal(result.status, 0, result.output);
+    expect(result.status, result.output).toBe(0);
     const tag = repo.git('rev-parse', 'v0.2.0^{commit}');
-    assert.deepEqual(result.log, [
+    expect(result.log).toEqual([
       `check ${head} 0.1.0`,
       `release-it ${head}`,
       `install ${tag}`,
       `check ${tag} 0.2.0`,
       `publish ${tag} 0.2.0 ${PUBLISH} built from feat: something new`,
     ]);
-    assert.ok(repo.remoteTags().includes('refs/tags/v0.2.0'));
+    expect(repo.remoteTags()).toContain('refs/tags/v0.2.0');
   });
 
   simulate('failed checks write nothing', async () => {
@@ -271,9 +270,9 @@ describe('release job', () => {
       FAKE_RELEASE: '0.2.0',
       FAKE_CHECK_FAIL: 'all',
     });
-    assert.notEqual(result.status, 0);
-    assert.deepEqual(result.log, [`check ${head} 0.1.0`]);
-    assert.ok(!repo.remoteTags().includes('refs/tags/v0.2.0'));
+    expect(result.status).not.toBe(0);
+    expect(result.log).toEqual([`check ${head} 0.1.0`]);
+    expect(repo.remoteTags()).not.toContain('refs/tags/v0.2.0');
   });
 
   simulate('resuming publishes exactly the sources of the version tag', async () => {
@@ -282,8 +281,8 @@ describe('release job', () => {
     // A later commit without a version bump must not be published as 0.1.0.
     const head = await repo.commit('docs: later change', 'not released');
     const result = await repo.release();
-    assert.equal(result.status, 0, result.output);
-    assert.deepEqual(result.log, [
+    expect(result.status, result.output).toBe(0);
+    expect(result.log).toEqual([
       `check ${head} 0.1.0`,
       `release-it ${head}`,
       `install ${tag}`,
@@ -298,12 +297,12 @@ describe('release job', () => {
     const tag = repo.tagSha();
     await repo.commit('feat: next');
     const first = await repo.release({ FAKE_RELEASE: '0.2.0' });
-    assert.equal(first.status, 0, first.output);
-    assert.ok(first.log.some((line) => / 0\.2\.0 --provenance/.test(line)));
+    expect(first.status, first.output).toBe(0);
+    expect(first.log).toContainEqual(expect.stringMatching(/ 0\.2\.0 --provenance/));
     // A manual run for the tag v0.1.0.
     const result = await repo.release({}, 'v0.1.0');
-    assert.equal(result.status, 0, result.output);
-    assert.deepEqual(result.log, [
+    expect(result.status, result.output).toBe(0);
+    expect(result.log).toEqual([
       `check ${tag} 0.1.0`,
       `release-it ${tag}`,
       `install ${tag}`,
@@ -317,18 +316,18 @@ describe('release job', () => {
     const tag = repo.tagSha();
     await repo.commit('docs: later change');
     const result = await repo.release({ FAKE_CHECK_FAIL: tag });
-    assert.notEqual(result.status, 0);
-    assert.ok(!result.log.some((line) => /^(publish|gh-release)/.test(line)));
-    assert.equal(result.log.at(-1), `check ${tag} 0.1.0`);
+    expect(result.status).not.toBe(0);
+    expect(result.log.filter((line) => /^(publish|gh-release)/.test(line))).toEqual([]);
+    expect(result.log.at(-1)).toBe(`check ${tag} 0.1.0`);
   });
 
   simulate('a complete release is left alone', async () => {
     const repo = await setup({ published: true, released: true });
     const head = await repo.commit('docs: later change');
     const result = await repo.release();
-    assert.equal(result.status, 0, result.output);
-    assert.deepEqual(result.log, [`check ${head} 0.1.0`, `release-it ${head}`]);
-    assert.match(result.output, /v0\.1\.0 is already published and released/);
+    expect(result.status, result.output).toBe(0);
+    expect(result.log).toEqual([`check ${head} 0.1.0`, `release-it ${head}`]);
+    expect(result.output).toMatch(/v0\.1\.0 is already published and released/);
   });
 
   simulate("a missing GitHub release is created from the tag's changelog", async () => {
@@ -336,8 +335,8 @@ describe('release job', () => {
     const tag = repo.tagSha();
     await repo.commit('docs: later change');
     const result = await repo.release();
-    assert.equal(result.status, 0, result.output);
-    assert.deepEqual(result.log.slice(2), [
+    expect(result.status, result.output).toBe(0);
+    expect(result.log.slice(2)).toEqual([
       `install ${tag}`,
       `check ${tag} 0.1.0`,
       `gh-release v0.1.0 ${tag} --title --verify-tag "* notes of 0.1.0"`,
@@ -348,18 +347,18 @@ describe('release job', () => {
     simulate(`npm ${code} aborts instead of publishing`, async () => {
       const repo = await setup({ released: true });
       const result = await repo.release({ FAKE_NPM_ERROR: code });
-      assert.notEqual(result.status, 0);
-      assert.match(result.output, new RegExp(`cannot tell whether ${NAME}@0\\.1\\.0 is published.*${code}`));
-      assert.ok(!result.log.some((line) => /^(install|publish|gh-release)/.test(line)));
+      expect(result.status).not.toBe(0);
+      expect(result.output).toMatch(new RegExp(`cannot tell whether ${NAME}@0\\.1\\.0 is published.*${code}`));
+      expect(result.log.filter((line) => /^(install|publish|gh-release)/.test(line))).toEqual([]);
     });
   }
 
   simulate('GitHub errors abort instead of publishing', async () => {
     const repo = await setup();
     const result = await repo.release({ FAKE_GH_ERROR: '1' });
-    assert.notEqual(result.status, 0);
-    assert.match(result.output, /cannot tell whether the GitHub release v0\.1\.0 exists.*Bad credentials/);
-    assert.ok(!result.log.some((line) => /^(install|publish|gh-release)/.test(line)));
+    expect(result.status).not.toBe(0);
+    expect(result.output).toMatch(/cannot tell whether the GitHub release v0\.1\.0 exists.*Bad credentials/);
+    expect(result.log.filter((line) => /^(install|publish|gh-release)/.test(line))).toEqual([]);
   });
 
   simulate('if main moved on, the atomic push fails and nothing is released', async () => {
@@ -372,9 +371,9 @@ describe('release job', () => {
     repo.gitIn(other, 'commit', '-q', '-am', 'fix: newer');
     repo.gitIn(other, 'push', '-q', 'origin', 'HEAD:main');
     const result = await repo.release({ FAKE_RELEASE: '0.2.0' });
-    assert.notEqual(result.status, 0);
-    assert.ok(!repo.remoteTags().includes('refs/tags/v0.2.0'));
-    assert.ok(!result.log.some((line) => /^(install|publish|gh-release)/.test(line)));
+    expect(result.status).not.toBe(0);
+    expect(repo.remoteTags()).not.toContain('refs/tags/v0.2.0');
+    expect(result.log.filter((line) => /^(install|publish|gh-release)/.test(line))).toEqual([]);
   });
 
   simulate('a tag whose sources have another version is refused', async () => {
@@ -388,9 +387,9 @@ describe('release job', () => {
     repo.git('commit', '-q', '-am', 'chore: bump without tag');
     repo.git('push', '-q', 'origin', 'HEAD:main');
     const result = await repo.release();
-    assert.notEqual(result.status, 0);
-    assert.match(result.output, /v0\.2\.0 .*version 0\.1\.0/);
-    assert.ok(!result.log.some((line) => /^(install|publish|gh-release)/.test(line)));
+    expect(result.status).not.toBe(0);
+    expect(result.output).toMatch(/v0\.2\.0 .*version 0\.1\.0/);
+    expect(result.log.filter((line) => /^(install|publish|gh-release)/.test(line))).toEqual([]);
   });
 
   simulate('a tag that is not on main is refused', async () => {
@@ -407,9 +406,9 @@ describe('release job', () => {
     repo.git('commit', '-q', '-am', 'chore: other 0.3.0');
     repo.git('push', '-q', 'origin', 'HEAD:main');
     const result = await repo.release();
-    assert.notEqual(result.status, 0);
-    assert.match(result.output, /v0\.3\.0 is not on main/);
-    assert.ok(!result.log.some((line) => /^(install|publish|gh-release)/.test(line)));
+    expect(result.status).not.toBe(0);
+    expect(result.output).toMatch(/v0\.3\.0 is not on main/);
+    expect(result.log.filter((line) => /^(install|publish|gh-release)/.test(line))).toEqual([]);
   });
 
   simulate('an untagged version is not published', async () => {
@@ -419,25 +418,22 @@ describe('release job', () => {
     repo.git('commit', '-q', '-am', 'chore: bump without release');
     repo.git('push', '-q', 'origin', 'HEAD:main');
     const result = await repo.release();
-    assert.equal(result.status, 0, result.output);
-    assert.match(result.output, /v0\.4\.0 is not tagged on origin/);
-    assert.ok(!result.log.some((line) => /^(install|publish|gh-release)/.test(line)));
+    expect(result.status, result.output).toBe(0);
+    expect(result.output).toMatch(/v0\.4\.0 is not tagged on origin/);
+    expect(result.log.filter((line) => /^(install|publish|gh-release)/.test(line))).toEqual([]);
   });
 });
 
 describe('release workflow', () => {
   test('runs the release job script on both triggers', async () => {
     const workflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8');
-    assert.match(workflow, /workflow_run:\n\s+workflows: \[CI\]/);
-    assert.match(workflow, /workflow_dispatch:/);
-    assert.match(workflow, /github\.event_name == 'workflow_dispatch' \|\|/);
-    assert.match(workflow, /\n\s+node scripts\/release\.js\n/);
-    assert.match(workflow, /id-token: write/);
-    assert.match(workflow, /environment: npm/);
+    expect(workflow).toMatch(/workflow_run:\n\s+workflows: \[CI\]/);
+    expect(workflow).toMatch(/workflow_dispatch:/);
+    expect(workflow).toMatch(/github\.event_name == 'workflow_dispatch' \|\|/);
+    expect(workflow).toMatch(/\n\s+node scripts\/release\.js\n/);
+    expect(workflow).toMatch(/id-token: write/);
+    expect(workflow).toMatch(/environment: npm/);
     // Every writing step is in the tested script.
-    assert.doesNotMatch(
-      workflow.replace(/^\s*#.*$/gm, ''),
-      /\bnpm publish\b|\bgh release create\b|\bbun run release\b/,
-    );
+    expect(workflow.replace(/^\s*#.*$/gm, '')).not.toMatch(/\bnpm publish\b|\bgh release create\b|\bbun run release\b/);
   });
 });

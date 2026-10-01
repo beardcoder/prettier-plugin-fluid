@@ -4,8 +4,8 @@
  * expressions and fixes attribute quotes. Refuses to return a result if Fluid
  * code got lost, duplicated or changed on the way.
  */
-import { assetElementTags } from './elements.js';
-import { escapeRegExp, lineIndent, linesStartingInString } from './lexer.js';
+import { assetElementTags, isRawTextElement, isVoidElement } from './elements.js';
+import { escapeRegExp, findTagEnd, lineIndent, linesStartingInString, scanDeclaration, scanTag } from './lexer.js';
 import type { Fragment, RawTextTags, RestoreState } from './types.js';
 
 /** Reverses `preprocess()` on the formatted HTML. */
@@ -20,7 +20,7 @@ export function restore(formatted: string, state: RestoreState): string {
   const unwrapped: string[] = [];
 
   const text = fixAttributeQuotes(
-    restoreAssetTags(restoreTagNames(formatted.replace(hint, ''), state), state.rawTextTags),
+    restoreAssetTags(restoreTagNames(joinClosingTags(formatted).replace(hint, ''), state), state.rawTextTags),
     state,
   );
   const result = text.replace(
@@ -82,6 +82,62 @@ export function revealPlaceholders(text: string, { nonce, namespaces, fragments 
     new RegExp(`${nonce}(\\d+)_*${nonce}`, 'g'),
     (match, id: string) => fragments[Number(id)]?.source ?? match,
   );
+}
+
+/**
+ * Prettier moves the `>` of a closing tag to the next line when an inline
+ * element does not fit (`</f:link.typolink\n>`), as breaking it elsewhere
+ * would add whitespace. Closing tags have no attributes, so joining them
+ * changes no rendered whitespace. Comments, raw text and elements after
+ * `<!-- prettier-ignore -->` stay as they are.
+ *
+ * @param html Formatted HTML with placeholders and hints.
+ */
+function joinClosingTags(html: string): string {
+  let result = '';
+  let copied = 0;
+  for (let i = html.indexOf('<'); i !== -1;) {
+    let next = i + 1;
+    const declaration = scanDeclaration(html, i);
+    const tag = declaration ? undefined : scanTag(html, i);
+    if (declaration) {
+      const ignore = /^<!--\s*prettier-ignore\s*-->$/.test(html.slice(i, declaration.end));
+      next = ignore ? skipElement(html, declaration.end) : declaration.end;
+    } else if (tag?.kind === 'tag') {
+      next = tag.end;
+      const text = html.slice(i, tag.end);
+      if (tag.closing && /\s>$/.test(text)) {
+        result += html.slice(copied, i) + text.replace(/\s+>$/, '>');
+        copied = tag.end;
+      } else if (!tag.closing && isRawTextElement(tag.name.toLowerCase())) {
+        const close = html.toLowerCase().indexOf(`</${tag.name.toLowerCase()}`, tag.end);
+        next = close === -1 ? html.length : close;
+      }
+    }
+    i = html.indexOf('<', next);
+  }
+
+  return result + html.slice(copied);
+}
+
+/** End of the element starting after `index` (and whitespace), or `index` if there is none. */
+function skipElement(html: string, index: number): number {
+  const start = index + html.slice(index).search(/\S|$/);
+  const tag = scanTag(html, start);
+  if (tag?.kind !== 'tag' || tag.closing || tag.selfClosing || isVoidElement(tag.name.toLowerCase())) return index;
+  const tags = new RegExp(`<(/?)${escapeRegExp(tag.name)}(?=[\\s/>])`, 'gi');
+  tags.lastIndex = tag.end;
+  let depth = 1;
+  for (let match; (match = tags.exec(html));) {
+    depth += match[1] ? -1 : 1;
+    if (depth === 0) {
+      const end = findTagEnd(html, match.index);
+
+      return end === -1 ? html.length : end;
+    }
+  }
+
+  return html.length;
 }
 
 /**

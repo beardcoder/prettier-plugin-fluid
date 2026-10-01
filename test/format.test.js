@@ -136,6 +136,22 @@ describe('layout', () => {
     );
   });
 
+  test('closing tags stay on one line', async () => {
+    await assertFormat(
+      `<p><f:link.typolink parameter="{item.link}" class="text-sm underline hover:text-accent">{item.title}</f:link.typolink></p>`,
+      `<p>\n  <f:link.typolink\n    parameter="{item.link}"\n    class="text-sm underline hover:text-accent"\n    >{item.title}</f:link.typolink>\n</p>\n`,
+    );
+    await assertFormat(
+      `<p><strong class="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">x</strong></p>`,
+      `<p>\n  <strong\n    class="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"\n    >x</strong>\n</p>\n`,
+    );
+  });
+
+  test('closing tags in comments, raw text and ignored elements stay as written', async () => {
+    const source = `<!-- </b\n> -->\n<textarea>\n</b\n></textarea>\n<!-- prettier-ignore -->\n<div><b>x</b\n></div>\n`;
+    await assertFormat(source, source);
+  });
+
   test('ViewHelper tags keep their width next to custom elements', async () => {
     // Templates that already use such tag names still restore correctly.
     await assertFormat(
@@ -155,7 +171,7 @@ describe('custom ViewHelpers', () => {
   test('are recognized and inline by default', async () => {
     await assertFormat(
       source,
-      `<div>\n  <my:card.teaser item="{item}"\n    >{item.title -> my:format.crop(length: 3)}</my:card.teaser\n  >\n</div>\n`,
+      `<div>\n  <my:card.teaser item="{item}"\n    >{item.title -> my:format.crop(length: 3)}</my:card.teaser>\n</div>\n`,
     );
   });
 
@@ -861,7 +877,7 @@ describe('HTML elements', () => {
   test('custom elements, MathML, ViewHelpers and dynamic tags are no void elements', async () => {
     await assertFormat(
       `<f:if condition="{a}"><my-el>  <x-y a="{b}"></x-y></my-el><h{n}>  t</h{n}><math><mi>x</mi></math><f:format.raw>{x}</f:format.raw></f:if>`,
-      `<f:if condition="{a}">\n  <my-el> <x-y a="{b}"></x-y></my-el><h{n}> t</h{n}><math><mi>x</mi></math\n  ><f:format.raw>{x}</f:format.raw>\n</f:if>\n`,
+      `<f:if condition="{a}">\n  <my-el> <x-y a="{b}"></x-y></my-el><h{n}> t</h{n}><math><mi>x</mi></math><f:format.raw>{x}</f:format.raw>\n</f:if>\n`,
     );
     // Without a closing tag, none of them is well-nested.
     for (const tag of ['my-el', 'h{n}', 'mi', 'f:format.raw']) {
@@ -970,7 +986,7 @@ describe('other plugins', () => {
   test('prettier-plugin-organize-attributes', async () => {
     await assertFormat(
       `<f:link.page pageUid="{uid}" class="btn" additionalAttributes="{rel: 'x'}">x</f:link.page>`,
-      `<f:link.page class="btn" additionalAttributes="{rel: 'x'}" pageUid="{uid}"\n  >x</f:link.page\n>\n`,
+      `<f:link.page class="btn" additionalAttributes="{rel: 'x'}" pageUid="{uid}"\n  >x</f:link.page>\n`,
       {
         plugins: [fluid, 'prettier-plugin-organize-attributes'],
         attributeSort: 'ASC',

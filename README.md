@@ -330,8 +330,9 @@ The plugin also supports `requirePragma` and `insertPragma`
 - A block ViewHelper inside inline content may add whitespace, just as Prettier
   does around block elements.
 - An inline element that does not fit the print width gets the `>` of its
-  tags moved to the next line (`</f:link.page\n>`), as Prettier does, since
-  breaking it elsewhere would add whitespace. Fluid accepts this.
+  opening tag moved to the next line (`\n  >Text</f:link.page>`), as Prettier
+  does, since breaking it elsewhere would add whitespace. Closing tags stay on
+  one line (`</f:link.page>`, not `</f:link.page\n>`).
 - Multi-line Fluid expressions keep their line breaks. A tag containing one
   always puts each attribute on its own line, and the expression's lines move
   along with the tag's indentation.
@@ -350,9 +351,10 @@ The plugin also supports `requirePragma` and `insertPragma`
    `display: …` or `prettier-ignore-attribute` comment.
 3. The result is formatted with `parser: "html"`, which uses whichever `html`
    parser the loaded plugins provide.
-4. The hints are removed and every placeholder is replaced by the original
-   code. A missing, duplicated or unknown placeholder is an error.
-   Parse errors are mapped back to the template's own line and column.
+4. Closing tags Prettier split (`</f:if\n>`) are joined. The hints are
+   removed and every placeholder is replaced by the original code. A missing,
+   duplicated or unknown placeholder is an error. Parse errors are mapped back
+   to the template's own line and column.
 
 ## Development
 

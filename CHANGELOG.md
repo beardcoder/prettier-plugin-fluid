@@ -8,6 +8,12 @@ breaking change is published automatically. Entries are generated from
 [release-it](https://github.com/release-it/release-it) with
 [conventional-changelog](https://github.com/conventional-changelog/conventional-changelog).
 
+## [0.12.3](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.12.2...v0.12.3) (2026-10-01)
+
+### Bug Fixes
+
+- keep the /> of self-closing tags before a closing tag ([5458823](https://github.com/beardcoder/prettier-plugin-fluid/commit/545882372ac1a8383212e26272b7f7fc151e8f97))
+
 ## [0.12.2](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.12.1...v0.12.2) (2026-10-01)
 
 ### Bug Fixes

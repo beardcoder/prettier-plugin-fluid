@@ -92,7 +92,9 @@ function isPublished(name, version) {
   } catch {
     json = undefined;
   }
-  if (result.ok && json === version) {
+  // npm 12 prints the version as an array, earlier versions as a string.
+  const versions = [json].flat();
+  if (result.ok && versions.length === 1 && versions[0] === version) {
     return true;
   }
   if (!result.ok && json?.error?.code === 'E404') {

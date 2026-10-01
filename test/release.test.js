@@ -78,7 +78,8 @@ if (command === "view") {
     process.exit(1);
   }
   if (fs.existsSync(state("npm-" + wanted))) {
-    console.log(JSON.stringify(wanted));
+    // npm 12 prints an array, earlier versions a string.
+    console.log(JSON.stringify(process.env.FAKE_NPM_ARRAY ? [wanted] : wanted));
     process.exit(0);
   }
   console.log(JSON.stringify({ error: { code: "E404", summary: "No match found for version " + wanted } }));
@@ -167,7 +168,7 @@ async function setup({ published = false, released = false } = {}) {
   };
   // Nothing of the surrounding CI or a scenario of another test leaks in.
   for (const name of Object.keys(env)) {
-    if (/^(npm_|GITHUB_|GH_|FAKE_(RELEASE|CHECK_FAIL|NPM_ERROR|GH_ERROR)$)/.test(name)) {
+    if (/^(npm_|GITHUB_|GH_|FAKE_(RELEASE|CHECK_FAIL|NPM_ERROR|NPM_ARRAY|GH_ERROR)$)/.test(name)) {
       delete env[name];
     }
   }
@@ -321,14 +322,16 @@ describe('release job', () => {
     expect(result.log.at(-1)).toBe(`check ${tag} 0.1.0`);
   });
 
-  simulate('a complete release is left alone', async () => {
-    const repo = await setup({ published: true, released: true });
-    const head = await repo.commit('docs: later change');
-    const result = await repo.release();
-    expect(result.status, result.output).toBe(0);
-    expect(result.log).toEqual([`check ${head} 0.1.0`, `release-it ${head}`]);
-    expect(result.output).toMatch(/v0\.1\.0 is already published and released/);
-  });
+  for (const [npm, scenario] of Object.entries({ 'npm 11': {}, 'npm 12': { FAKE_NPM_ARRAY: '1' } })) {
+    simulate(`a complete release is left alone (${npm})`, async () => {
+      const repo = await setup({ published: true, released: true });
+      const head = await repo.commit('docs: later change');
+      const result = await repo.release(scenario);
+      expect(result.status, result.output).toBe(0);
+      expect(result.log).toEqual([`check ${head} 0.1.0`, `release-it ${head}`]);
+      expect(result.output).toMatch(/v0\.1\.0 is already published and released/);
+    });
+  }
 
   simulate("a missing GitHub release is created from the tag's changelog", async () => {
     const repo = await setup({ published: true });

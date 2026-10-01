@@ -38,7 +38,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "node scripts/build.js",
+    "build": "bun scripts/build.js",
     "check": "bun run typecheck && bun run lint && bun run format:check && bun run build && bun run test && bun run corpus:strict",
     "corpus": "bun scripts/check-corpus.js",
     "corpus:strict": "bun scripts/check-corpus.js --strict test/corpus",

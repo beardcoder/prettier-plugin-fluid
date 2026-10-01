@@ -373,7 +373,7 @@ The project uses [Bun](https://bun.sh) for development:
 
 ```sh
 bun install
-bun run build                     # compile src/ to dist/ (deletes dist/ first)
+bun run build                     # bundle src/ to dist/ with Bun (deletes dist/ first)
 bun run typecheck                 # tsc --noEmit
 bun run lint                      # oxlint (type-aware), `lint:fix` applies fixes
 bun run format                    # oxfmt, `format:check` only checks
@@ -385,16 +385,17 @@ bun run corpus:strict             # strict check of the versioned corpus in test
 bun run test:package              # build, then smoke test of the packed npm package
 ```
 
-The plugin is written in TypeScript (`src/`) and compiled by `tsc` to ESM
-JavaScript with type declarations in `dist/`, which is not checked in. The
-npm package contains only `dist/` (plus `README.md`, `LICENSE` and
-`CHANGELOG.md`), so users need neither Bun nor TypeScript, and
-`@prettier/html-tags` as its only dependency. `bun run build` deletes `dist/`
-before compiling, so no stale modules remain; `npm pack` and `npm publish`
+The plugin is written in TypeScript (`src/`). `bun run build` bundles it with
+[Bun's bundler](https://bun.com/docs/bundler) into one ES module,
+`dist/index.js`, and `tsc` emits the type declarations next to it; `dist/` is
+not checked in. Prettier and `@prettier/html-tags` are not bundled, but
+installed with the plugin. The npm package contains only `dist/` (plus
+`README.md`, `LICENSE` and `CHANGELOG.md`), so users need neither Bun nor
+TypeScript, and `@prettier/html-tags` as its only dependency. `bun run build`
+deletes `dist/` first, so no stale files remain; `npm pack` and `npm publish`
 build via `prepack`. Tests and the corpus check run the TypeScript sources
-directly with Bun; the package script builds first, so it always checks freshly
-compiled code. Building needs Node.js 20.10 or later (for
-TypeScript 7's `tsc`); the built plugin runs on Node.js 20 and later.
+directly with Bun; the package script builds first, so it always checks a fresh
+bundle. Building needs Bun; the built plugin runs on Node.js 20 and later.
 
 The source is split by responsibility:
 
@@ -447,8 +448,8 @@ are not importable), formats templates twice, detects `.fluid` and
 `.fluid.html` by file name, formats `.html` with `parser: "fluid"`, runs
 Prettier's CLI and type-checks a TypeScript file using the plugin and
 `FluidOptions` with `tsc --noEmit`. It also checks that a rebuild leaves no output of removed modules,
-that the package contains exactly the compiled modules and declarations of
-`src/` and no sources, tests or other development files, and that the
+that the package contains exactly the bundle and the declarations of the
+modules in `src/` and no sources, tests or other development files, and that the
 repository is left as it was.
 Nothing is published. It needs network access to the npm registry;
 `--prettier <version>` selects the Prettier version, `--package-dir <dir>`

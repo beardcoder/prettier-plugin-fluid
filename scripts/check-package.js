@@ -6,7 +6,7 @@
 //
 //   node scripts/check-package.js [--package-dir <dir>] [--prettier <version>]
 //
-// - The package is built explicitly first (`npm run build` in the package
+// - The package is built explicitly first (`bun run build` in the package
 //   directory), as `npm pack --ignore-scripts` skips lifecycle scripts on
 //   purpose: `prepare` would install the husky Git hooks, which must not be a
 //   side effect of a test.
@@ -15,11 +15,11 @@
 //   repository's own node_modules; the package's dependencies are installed
 //   regularly with it.
 // - Fails if the build keeps stale output of removed modules, if the package
-//   lacks a build artifact of a source module or contains other build output,
-//   sources, tests, temporary files or loop progress files, if the repository
-//   changed (tarballs, lock files, Git hooks), if formatting in the consumer
-//   does not work, or if a TypeScript consumer of the package and its option
-//   types does not type-check.
+//   lacks the bundle or the declarations of a source module or contains other
+//   build output, sources, tests, temporary files or loop progress files, if
+//   the repository changed (tarballs, lock files, Git hooks), if formatting in
+//   the consumer does not work, or if a TypeScript consumer of the package and
+//   its option types does not type-check.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -260,21 +260,19 @@ try {
   const stale = join(packageDir, 'dist', 'removed-module.js');
   await mkdir(join(packageDir, 'dist'), { recursive: true });
   await writeFile(stale, 'export {};\n');
-  exec('npm', ['run', 'build'], packageDir);
+  exec('bun', ['run', 'build'], packageDir);
   assert.ok(!existsSync(stale), 'the build kept stale output in dist/');
   const [packed] = JSON.parse(
     exec('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', temp], packageDir),
   );
   const contents = packed.files.map((/** @type {{ path: string }} */ file) => file.path).sort();
-  // Exactly the JavaScript and declarations of each source module.
-  const built = (await listFiles(join(packageDir, 'src')))
-    .filter((file) => file.endsWith('.ts') && !file.endsWith('.d.ts'))
-    .flatMap((file) => {
-      const name = `dist/${file.slice(0, -'.ts'.length)}`;
-
-      return [`${name}.js`, `${name}.d.ts`];
-    })
-    .sort();
+  // Exactly the bundle and the declarations of each source module.
+  const built = [
+    'dist/index.js',
+    ...(await listFiles(join(packageDir, 'src')))
+      .filter((file) => file.endsWith('.ts') && !file.endsWith('.d.ts'))
+      .map((file) => `dist/${file.slice(0, -'.ts'.length)}.d.ts`),
+  ].sort();
   assert.deepEqual(
     contents.filter((file) => file.startsWith('dist/')),
     built,

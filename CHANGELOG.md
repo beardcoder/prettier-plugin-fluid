@@ -8,6 +8,12 @@ breaking change is published automatically. Entries are generated from
 [release-it](https://github.com/release-it/release-it) with
 [conventional-changelog](https://github.com/conventional-changelog/conventional-changelog).
 
+## [0.12.2](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.12.1...v0.12.2) (2026-10-01)
+
+### Bug Fixes
+
+- put each attribute of a broken inline tag on its own line ([a802bbb](https://github.com/beardcoder/prettier-plugin-fluid/commit/a802bbbc20e3c4eafa3ebdca6c2717bdd0d9a5bd))
+
 ## [0.12.1](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.12.0...v0.12.1) (2026-10-01)
 
 ### Bug Fixes

@@ -5,11 +5,22 @@
  * code got lost, duplicated or changed on the way.
  */
 import { assetElementTags, isRawTextElement, isVoidElement } from './elements.js';
-import { escapeRegExp, findTagEnd, lineIndent, linesStartingInString, scanDeclaration, scanTag } from './lexer.js';
-import type { Fragment, RawTextTags, RestoreState } from './types.js';
+import {
+  escapeRegExp,
+  findTagEnd,
+  lineIndent,
+  linesStartingInString,
+  scanDeclaration,
+  scanTag,
+  skipQuoted,
+} from './lexer.js';
+import type { Fragment, RawTextTags, RestoreState, TagLayout } from './types.js';
+
+/** Prettier's defaults. */
+const DEFAULT_LAYOUT: TagLayout = { tabWidth: 2, useTabs: false, bracketSameLine: false };
 
 /** Reverses `preprocess()` on the formatted HTML. */
-export function restore(formatted: string, state: RestoreState): string {
+export function restore(formatted: string, state: RestoreState, layout = DEFAULT_LAYOUT): string {
   const { nonce, hints, fragments } = state;
   const hint = new RegExp(`(?:${hints.map(escapeRegExp).join('|')})(?:\\n[ \\t]*)?`, 'g');
   const placeholder = new RegExp(`(<!--)?${nonce}(\\d+)_*${nonce}(-->)?`, 'g');
@@ -20,7 +31,7 @@ export function restore(formatted: string, state: RestoreState): string {
   const unwrapped: string[] = [];
 
   const text = fixAttributeQuotes(
-    restoreAssetTags(restoreTagNames(joinClosingTags(formatted).replace(hint, ''), state), state.rawTextTags),
+    restoreAssetTags(restoreTagNames(fixBrokenTags(formatted, layout).replace(hint, ''), state), state.rawTextTags),
     state,
   );
   const result = text.replace(
@@ -85,15 +96,18 @@ export function revealPlaceholders(text: string, { nonce, namespaces, fragments 
 }
 
 /**
- * Prettier moves the `>` of a closing tag to the next line when an inline
- * element does not fit (`</f:link.typolink\n>`), as breaking it elsewhere
- * would add whitespace. Closing tags have no attributes, so joining them
- * changes no rendered whitespace. Comments, raw text and elements after
- * `<!-- prettier-ignore -->` stay as they are.
+ * Prettier cannot break an inline element that does not fit without adding
+ * whitespace, so it moves the `>` of its tags to the next line, directly
+ * before the content (`<a href="…"\n  >text</a\n>`). Such opening tags get
+ * each attribute on its own line and the `>` at the tag's indentation (or
+ * after the last attribute with `bracketSameLine`), and closing tags are
+ * joined again (`</a>`). Line breaks inside tags render no whitespace.
+ * Comments, raw text and elements after `<!-- prettier-ignore -->` stay as
+ * they are.
  *
  * @param html Formatted HTML with placeholders and hints.
  */
-function joinClosingTags(html: string): string {
+function fixBrokenTags(html: string, layout: TagLayout): string {
   let result = '';
   let copied = 0;
   for (let i = html.indexOf('<'); i !== -1;) {
@@ -109,6 +123,15 @@ function joinClosingTags(html: string): string {
       if (tag.closing && /\s>$/.test(text)) {
         result += html.slice(copied, i) + text.replace(/\s+>$/, '>');
         copied = tag.end;
+      } else if (!tag.closing && /\n[ \t]*>$/.test(text) && !/^(?:\n|$)/.test(html.slice(tag.end, tag.end + 1))) {
+        result += html.slice(copied, i);
+        result += breakAttributes(
+          tag.name,
+          text.slice(tag.name.length + 1, -1),
+          lineIndent(result, result.length),
+          layout,
+        );
+        copied = tag.end;
       } else if (!tag.closing && isRawTextElement(tag.name.toLowerCase())) {
         const close = html.toLowerCase().indexOf(`</${tag.name.toLowerCase()}`, tag.end);
         next = close === -1 ? html.length : close;
@@ -118,6 +141,31 @@ function joinClosingTags(html: string): string {
   }
 
   return result + html.slice(copied);
+}
+
+/**
+ * An opening tag with each attribute on its own line.
+ *
+ * @param attributes The tag's text between its name and `>`.
+ * @param indent Indentation of the line the tag starts on.
+ */
+function breakAttributes(name: string, attributes: string, indent: string, layout: TagLayout): string {
+  const parts: string[] = [];
+  for (let i = 0; i < attributes.length;) {
+    const start = i + attributes.slice(i).search(/\S|$/);
+    let end = start;
+    while (end < attributes.length && !/\s/.test(attributes[end])) {
+      const quoted = attributes[end] === '"' || attributes[end] === "'" ? skipQuoted(attributes, end) : -1;
+      end = quoted === -1 ? end + 1 : quoted;
+    }
+    if (end > start) parts.push(attributes.slice(start, end));
+    i = Math.max(end, start + 1);
+  }
+  if (parts.length === 0) return `<${name}>`;
+  const unit = layout.useTabs ? '\t' : ' '.repeat(layout.tabWidth);
+  const lines = parts.map((part) => `\n${indent}${unit}${part}`).join('');
+
+  return `<${name}${lines}${layout.bracketSameLine ? '' : `\n${indent}`}>`;
 }
 
 /** End of the element starting after `index` (and whitespace), or `index` if there is none. */

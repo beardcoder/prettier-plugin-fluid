@@ -124,7 +124,11 @@ async function formatTemplate(text: string, options: FormatOptions, origin?: Ori
     });
   }
 
-  return restore(formatted, state);
+  return restore(formatted, state, {
+    tabWidth: options.tabWidth ?? 2,
+    useTabs: options.useTabs ?? false,
+    bracketSameLine: options.bracketSameLine ?? false,
+  });
 }
 
 /**

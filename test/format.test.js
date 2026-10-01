@@ -136,14 +136,34 @@ describe('layout', () => {
     );
   });
 
-  test('closing tags stay on one line', async () => {
+  test('broken inline tags put each attribute on its own line', async () => {
     await assertFormat(
       `<p><f:link.typolink parameter="{item.link}" class="text-sm underline hover:text-accent">{item.title}</f:link.typolink></p>`,
-      `<p>\n  <f:link.typolink\n    parameter="{item.link}"\n    class="text-sm underline hover:text-accent"\n    >{item.title}</f:link.typolink>\n</p>\n`,
+      `<p>\n  <f:link.typolink\n    parameter="{item.link}"\n    class="text-sm underline hover:text-accent"\n  >{item.title}</f:link.typolink>\n</p>\n`,
     );
     await assertFormat(
       `<p><strong class="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">x</strong></p>`,
-      `<p>\n  <strong\n    class="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"\n    >x</strong>\n</p>\n`,
+      `<p>\n  <strong\n    class="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"\n  >x</strong>\n</p>\n`,
+    );
+    // Attributes that fit next to the tag name are broken, too.
+    await assertFormat(
+      `<div><fh:tag tagName="{claimTag}" class="c-hero-main__claim{f:if(condition: '{fontWeight}', then: ' o-header--weight-{fontWeight}')}">{claim}</fh:tag></div>`,
+      `<div>\n    <fh:tag\n        tagName="{claimTag}"\n        class="c-hero-main__claim{f:if(condition: '{fontWeight}', then: ' o-header--weight-{fontWeight}')}"\n    >{claim}</fh:tag>\n</div>\n`,
+      { tabWidth: 4, printWidth: 140 },
+    );
+  });
+
+  test('broken inline tags follow useTabs and bracketSameLine', async () => {
+    const source = `<div><span class="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">x</span></div>`;
+    await assertFormat(
+      source,
+      `<div>\n\t<span\n\t\tclass="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"\n\t>x</span>\n</div>\n`,
+      { useTabs: true },
+    );
+    await assertFormat(
+      source,
+      `<div>\n  <span\n    class="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">x</span>\n</div>\n`,
+      { bracketSameLine: true },
     );
   });
 
@@ -171,7 +191,7 @@ describe('custom ViewHelpers', () => {
   test('are recognized and inline by default', async () => {
     await assertFormat(
       source,
-      `<div>\n  <my:card.teaser item="{item}"\n    >{item.title -> my:format.crop(length: 3)}</my:card.teaser>\n</div>\n`,
+      `<div>\n  <my:card.teaser\n    item="{item}"\n  >{item.title -> my:format.crop(length: 3)}</my:card.teaser>\n</div>\n`,
     );
   });
 
@@ -986,7 +1006,7 @@ describe('other plugins', () => {
   test('prettier-plugin-organize-attributes', async () => {
     await assertFormat(
       `<f:link.page pageUid="{uid}" class="btn" additionalAttributes="{rel: 'x'}">x</f:link.page>`,
-      `<f:link.page class="btn" additionalAttributes="{rel: 'x'}" pageUid="{uid}"\n  >x</f:link.page>\n`,
+      `<f:link.page\n  class="btn"\n  additionalAttributes="{rel: 'x'}"\n  pageUid="{uid}"\n>x</f:link.page>\n`,
       {
         plugins: [fluid, 'prettier-plugin-organize-attributes'],
         attributeSort: 'ASC',

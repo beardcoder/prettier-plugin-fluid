@@ -56,6 +56,13 @@ export interface RestoreState {
   rawTextTags: RawTextTags;
 }
 
+/** Prettier options `restore()` lays out tags with. */
+export interface TagLayout {
+  tabWidth: number;
+  useTabs: boolean;
+  bracketSameLine: boolean;
+}
+
 /** 1-based line and column, as in Prettier's error locations. */
 export interface Position {
   line: number;

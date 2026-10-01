@@ -11,7 +11,11 @@
       <f:for each="{category.items}" as="item">
         <f:switch expression="{item.type}">
           <f:case value="link">
-            <f:link.typolink parameter="{item.link}" title="{f:translate(key: 'link.title', arguments: {0: '{item.title -> f:format.stripTags()}', 1: \"{f:format.date(date: item.date, format: 'd.m.Y')}\"})}">{item.title}</f:link.typolink>
+            <f:link.typolink
+              parameter="{item.link}"
+              title="{f:translate(key: 'link.title', arguments: {0: '{item.title -> f:format.stripTags()}', 1: \"{f:format.date(date: item.date, format: 'd.m.Y')}\"})}"
+              >{item.title}</f:link.typolink
+            >
           </f:case>
           <f:defaultCase><span>{item.title}</span></f:defaultCase>
         </f:switch>

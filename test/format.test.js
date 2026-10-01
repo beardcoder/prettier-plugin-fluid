@@ -136,24 +136,6 @@ describe('layout', () => {
     );
   });
 
-  test('too long inline elements stay on one line', async () => {
-    await assertFormat(
-      `<h2>\n<strong class="block text-[clamp(3rem,2.25rem+3.5vw,5.5rem)] leading-[0.9]"><trh:format.inlineMarkup>{record.header}</trh:format.inlineMarkup></strong>\n</h2>`,
-      `<h2>\n  <strong class="block text-[clamp(3rem,2.25rem+3.5vw,5.5rem)] leading-[0.9]"><trh:format.inlineMarkup>{record.header}</trh:format.inlineMarkup></strong>\n</h2>\n`,
-    );
-    await assertFormat(
-      `<p>Lorem ipsum dolor sit amet, consectetur elit, <f:link.page pageUid="{uid}" class="underline hover:text-accent">Privacy policy</f:link.page>, sed do.</p>`,
-      `<p>\n  Lorem ipsum dolor sit amet, consectetur elit,\n  <f:link.page pageUid="{uid}" class="underline hover:text-accent">Privacy policy</f:link.page>, sed do.\n</p>\n`,
-    );
-  });
-
-  test("inline elements with line breaks in their content keep Prettier's layout", async () => {
-    const source = `<span class="aaaaaaaaaaaaaaaaaaaaaaaaaaaa"\n  >Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod\n  tempor</span\n>\n`;
-    await assertFormat(source, source);
-    const value = `<span\n  title="a\n  b"\n  class="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"\n  >x</span\n>\n`;
-    await assertFormat(value, value);
-  });
-
   test('ViewHelper tags keep their width next to custom elements', async () => {
     // Templates that already use such tag names still restore correctly.
     await assertFormat(
@@ -173,7 +155,7 @@ describe('custom ViewHelpers', () => {
   test('are recognized and inline by default', async () => {
     await assertFormat(
       source,
-      `<div>\n  <my:card.teaser item="{item}">{item.title -> my:format.crop(length: 3)}</my:card.teaser>\n</div>\n`,
+      `<div>\n  <my:card.teaser item="{item}"\n    >{item.title -> my:format.crop(length: 3)}</my:card.teaser\n  >\n</div>\n`,
     );
   });
 
@@ -879,7 +861,7 @@ describe('HTML elements', () => {
   test('custom elements, MathML, ViewHelpers and dynamic tags are no void elements', async () => {
     await assertFormat(
       `<f:if condition="{a}"><my-el>  <x-y a="{b}"></x-y></my-el><h{n}>  t</h{n}><math><mi>x</mi></math><f:format.raw>{x}</f:format.raw></f:if>`,
-      `<f:if condition="{a}">\n  <my-el> <x-y a="{b}"></x-y></my-el><h{n}> t</h{n}><math><mi>x</mi></math><f:format.raw>{x}</f:format.raw>\n</f:if>\n`,
+      `<f:if condition="{a}">\n  <my-el> <x-y a="{b}"></x-y></my-el><h{n}> t</h{n}><math><mi>x</mi></math\n  ><f:format.raw>{x}</f:format.raw>\n</f:if>\n`,
     );
     // Without a closing tag, none of them is well-nested.
     for (const tag of ['my-el', 'h{n}', 'mi', 'f:format.raw']) {
@@ -988,7 +970,7 @@ describe('other plugins', () => {
   test('prettier-plugin-organize-attributes', async () => {
     await assertFormat(
       `<f:link.page pageUid="{uid}" class="btn" additionalAttributes="{rel: 'x'}">x</f:link.page>`,
-      `<f:link.page class="btn" additionalAttributes="{rel: 'x'}" pageUid="{uid}">x</f:link.page>\n`,
+      `<f:link.page class="btn" additionalAttributes="{rel: 'x'}" pageUid="{uid}"\n  >x</f:link.page\n>\n`,
       {
         plugins: [fluid, 'prettier-plugin-organize-attributes'],
         attributeSort: 'ASC',

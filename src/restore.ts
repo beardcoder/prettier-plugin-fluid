@@ -4,9 +4,9 @@
  * expressions and fixes attribute quotes. Refuses to return a result if Fluid
  * code got lost, duplicated or changed on the way.
  */
-import { assetElementTags, isRawTextElement, isVoidElement } from './elements.js';
-import { escapeRegExp, lineIndent, linesStartingInString, scanDeclaration, scanTag } from './lexer.js';
-import type { Fragment, RawTextTags, RestoreState, SourceRange } from './types.js';
+import { assetElementTags } from './elements.js';
+import { escapeRegExp, lineIndent, linesStartingInString } from './lexer.js';
+import type { Fragment, RawTextTags, RestoreState } from './types.js';
 
 /** Reverses `preprocess()` on the formatted HTML. */
 export function restore(formatted: string, state: RestoreState): string {
@@ -20,7 +20,7 @@ export function restore(formatted: string, state: RestoreState): string {
   const unwrapped: string[] = [];
 
   const text = fixAttributeQuotes(
-    restoreAssetTags(restoreTagNames(collapseHuggedElements(formatted).replace(hint, ''), state), state.rawTextTags),
+    restoreAssetTags(restoreTagNames(formatted.replace(hint, ''), state), state.rawTextTags),
     state,
   );
   const result = text.replace(
@@ -82,139 +82,6 @@ export function revealPlaceholders(text: string, { nonce, namespaces, fragments 
     new RegExp(`${nonce}(\\d+)_*${nonce}`, 'g'),
     (match, id: string) => fragments[Number(id)]?.source ?? match,
   );
-}
-
-/**
- * Prettier cannot break a too long inline element without adding whitespace,
- * so it moves the brackets of its tags to the next line instead:
- *
- *     <strong
- *       class="…"
- *       ><em>text</em></strong
- *     >
- *
- * Such an element is put back on one line, even if that exceeds the print
- * width, as long as its content has no line break of its own. Only line
- * breaks inside tags are removed, so the rendered whitespace stays the same.
- *
- * @param html Formatted HTML with placeholders.
- */
-function collapseHuggedElements(html: string): string {
-  const tags: SourceRange[] = [];
-  /** Line breaks outside of tag syntax, i.e. in content. */
-  const breaks: number[] = [];
-  const hugged: SourceRange[] = [];
-  const stack: { name: string; start: number; hugged: boolean }[] = [];
-
-  function addBreaks(start: number, end: number): void {
-    for (let i = html.indexOf('\n', start); i !== -1 && i < end;) {
-      breaks.push(i);
-      i = html.indexOf('\n', i + 1);
-    }
-  }
-
-  let i = 0;
-  while (i < html.length) {
-    if (html[i] === '\n') {
-      breaks.push(i++);
-      continue;
-    }
-    if (html[i] !== '<') {
-      i++;
-      continue;
-    }
-    const declaration = scanDeclaration(html, i);
-    if (declaration) {
-      addBreaks(i, declaration.end);
-      i = declaration.end;
-      continue;
-    }
-    const scanned = scanTag(html, i);
-    if (scanned?.kind !== 'tag') {
-      i++;
-      continue;
-    }
-    const { end, closing } = scanned;
-    const name = scanned.name.toLowerCase();
-    const tag = html.slice(i, end);
-    tags.push({ start: i, end });
-    // Line breaks in attribute values are content, too.
-    for (let j = i; j < end; j++) {
-      if (html[j] === '"' || html[j] === "'") {
-        const close = html.indexOf(html[j], j + 1);
-        if (close === -1) break;
-        addBreaks(j, close);
-        j = close;
-      }
-    }
-    if (closing) {
-      let index = stack.length - 1;
-      while (index >= 0 && stack[index].name !== name) {
-        index--;
-      }
-      if (index >= 0) {
-        const open = stack[index];
-        stack.length = index;
-        if (open.hugged || tag.includes('\n')) {
-          hugged.push({ start: open.start, end });
-        }
-      }
-    } else if (!scanned.selfClosing && !isVoidElement(name)) {
-      stack.push({
-        name,
-        start: i,
-        // `>` moved to the next line and directly followed by content.
-        hugged: /\n[ \t]*>$/.test(tag) && !/^(?:\n|<\/|$)/.test(html.slice(end, end + 2)),
-      });
-      if (isRawTextElement(name)) {
-        const close = html.toLowerCase().indexOf(`</${name}`, end);
-        const stop = close === -1 ? html.length : close;
-        addBreaks(end, stop);
-        i = stop;
-        continue;
-      }
-    }
-    i = end;
-  }
-
-  function hasBreak(range: SourceRange): boolean {
-    let low = 0;
-    let high = breaks.length;
-    while (low < high) {
-      const mid = (low + high) >> 1;
-      if (breaks[mid] < range.start) {
-        low = mid + 1;
-      } else {
-        high = mid;
-      }
-    }
-
-    return low < breaks.length && breaks[low] < range.end;
-  }
-  // Outermost elements only; nested ones are part of them.
-  const ranges: SourceRange[] = [];
-  for (const range of hugged.filter((range) => !hasBreak(range)).sort((a, b) => a.start - b.start)) {
-    if (range.start >= (ranges.at(-1)?.end ?? 0)) {
-      ranges.push(range);
-    }
-  }
-  if (ranges.length === 0) return html;
-
-  let result = '';
-  let copied = 0;
-  let next = 0;
-  for (const tag of tags) {
-    while (next < ranges.length && ranges[next].end <= tag.start) {
-      next++;
-    }
-    if (next === ranges.length) break;
-    const text = html.slice(tag.start, tag.end);
-    if (tag.start < ranges[next].start || !text.includes('\n')) continue;
-    result += html.slice(copied, tag.start) + text.replace(/[ \t]*\n[ \t]*/g, ' ').replace(/ >$/, '>');
-    copied = tag.end;
-  }
-
-  return result + html.slice(copied);
 }
 
 /**

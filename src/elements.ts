@@ -95,11 +95,6 @@ export function isVoidElement(name: string): boolean {
   return VOID_ELEMENTS.has(name);
 }
 
-/** @param name Lowercase HTML tag name. */
-export function isRawTextElement(name: string): boolean {
-  return RAW_TEXT_ELEMENTS.has(name);
-}
-
 /**
  * The HTML element (`style`/`script`) an asset ViewHelper such as
  * `f:asset.css` is formatted as, or undefined.

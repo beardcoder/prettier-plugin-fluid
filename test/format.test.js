@@ -153,6 +153,19 @@ describe('layout', () => {
     );
   });
 
+  test('self-closing tags before a closing tag keep their />', async () => {
+    await assertFormat(
+      `<div><span class="pointer-events-none absolute top-3 left-3 rounded-ui bg-ink/85 px-2.5 py-1 text-meta font-semibold text-white"><f:translate key="compare.before" domain="trends_package.labels" /></span></div>`,
+      `<div>\n    <span\n        class="pointer-events-none absolute top-3 left-3 rounded-ui bg-ink/85 px-2.5 py-1 text-meta font-semibold text-white"\n    ><f:translate key="compare.before" domain="trends_package.labels" /></span>\n</div>\n`,
+      { tabWidth: 4, printWidth: 120 },
+    );
+    // With broken attributes, `/>` goes to the line's indentation.
+    await assertFormat(
+      `<div><span class="a"><f:translate key="compare.before.with.a.very.long.key.name" domain="trends_package.labels" arguments="{0: item.title}" /></span></div>`,
+      `<div>\n  <span\n    class="a"\n  ><f:translate\n    key="compare.before.with.a.very.long.key.name"\n    domain="trends_package.labels"\n    arguments="{0: item.title}"\n  /></span>\n</div>\n`,
+    );
+  });
+
   test('broken inline tags follow useTabs and bracketSameLine', async () => {
     const source = `<div><span class="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa">x</span></div>`;
     await assertFormat(

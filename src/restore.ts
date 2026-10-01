@@ -101,7 +101,10 @@ export function revealPlaceholders(text: string, { nonce, namespaces, fragments 
  * before the content (`<a href="…"\n  >text</a\n>`). Such opening tags get
  * each attribute on its own line and the `>` at the tag's indentation (or
  * after the last attribute with `bracketSameLine`), and closing tags are
- * joined again (`</a>`). Line breaks inside tags render no whitespace.
+ * joined again (`</a>`). A self-closing tag before a closing tag loses its
+ * `/>` the same way (`<f:translate key="a"\n/></span>`) and is joined again,
+ * unless its attributes are broken, too. Line breaks inside tags render no
+ * whitespace.
  * Comments, raw text and elements after `<!-- prettier-ignore -->` stay as
  * they are.
  *
@@ -123,14 +126,15 @@ function fixBrokenTags(html: string, layout: TagLayout): string {
       if (tag.closing && /\s>$/.test(text)) {
         result += html.slice(copied, i) + text.replace(/\s+>$/, '>');
         copied = tag.end;
-      } else if (!tag.closing && /\n[ \t]*>$/.test(text) && !/^(?:\n|$)/.test(html.slice(tag.end, tag.end + 1))) {
+      } else if (!tag.closing && /\n[ \t]*\/?>$/.test(text) && !/^(?:\n|$)/.test(html.slice(tag.end, tag.end + 1))) {
+        const close = tag.selfClosing ? '/>' : '>';
+        const attributes = text.slice(tag.name.length + 1, -close.length).trimEnd();
         result += html.slice(copied, i);
-        result += breakAttributes(
-          tag.name,
-          text.slice(tag.name.length + 1, -1),
-          lineIndent(result, result.length),
-          layout,
-        );
+        // A self-closing tag whose attributes fit next to its name only lost its `/>`.
+        result +=
+          tag.selfClosing && !attributes.includes('\n')
+            ? `<${tag.name}${attributes} />`
+            : breakAttributes(tag.name, attributes, close, lineIndent(result, result.length), layout);
         copied = tag.end;
       } else if (!tag.closing && isRawTextElement(tag.name.toLowerCase())) {
         const close = html.toLowerCase().indexOf(`</${tag.name.toLowerCase()}`, tag.end);
@@ -144,12 +148,18 @@ function fixBrokenTags(html: string, layout: TagLayout): string {
 }
 
 /**
- * An opening tag with each attribute on its own line.
+ * An opening or self-closing tag with each attribute on its own line.
  *
- * @param attributes The tag's text between its name and `>`.
+ * @param attributes The tag's text between its name and `close`.
  * @param indent Indentation of the line the tag starts on.
  */
-function breakAttributes(name: string, attributes: string, indent: string, layout: TagLayout): string {
+function breakAttributes(
+  name: string,
+  attributes: string,
+  close: '>' | '/>',
+  indent: string,
+  layout: TagLayout,
+): string {
   const parts: string[] = [];
   for (let i = 0; i < attributes.length;) {
     const start = i + attributes.slice(i).search(/\S|$/);
@@ -161,11 +171,12 @@ function breakAttributes(name: string, attributes: string, indent: string, layou
     if (end > start) parts.push(attributes.slice(start, end));
     i = Math.max(end, start + 1);
   }
-  if (parts.length === 0) return `<${name}>`;
+  const space = close === '/>' ? ' ' : '';
+  if (parts.length === 0) return `<${name}${space}${close}`;
   const unit = layout.useTabs ? '\t' : ' '.repeat(layout.tabWidth);
   const lines = parts.map((part) => `\n${indent}${unit}${part}`).join('');
 
-  return `<${name}${lines}${layout.bracketSameLine ? '' : `\n${indent}`}>`;
+  return `<${name}${lines}${layout.bracketSameLine ? space : `\n${indent}`}${close}`;
 }
 
 /** End of the element starting after `index` (and whitespace), or `index` if there is none. */

@@ -8,6 +8,12 @@ breaking change is published automatically. Entries are generated from
 [release-it](https://github.com/release-it/release-it) with
 [conventional-changelog](https://github.com/conventional-changelog/conventional-changelog).
 
+## [0.12.0](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.11.1...v0.12.0) (2026-10-01)
+
+### Features
+
+- ship TypeScript sources and type declarations ([76c07b2](https://github.com/beardcoder/prettier-plugin-fluid/commit/76c07b2dd7dc88db43280b6647c286c7aaee9bf5))
+
 ## [0.11.1](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.11.0...v0.11.1) (2026-09-30)
 
 ### Bug Fixes

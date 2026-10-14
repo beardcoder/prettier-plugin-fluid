@@ -45,7 +45,7 @@ function formatArray(code: string, format: ArrayFormat): string | undefined {
   let i = 1;
   while (true) {
     // `\s*` always matches.
-    const space = matchSticky(WHITESPACE, code, i)![0];
+    const space = matchSticky(WHITESPACE, code, i)?.[0] ?? '';
     if (space.includes('\n')) return undefined;
     i += space.length;
     if (i === end) break;
@@ -72,7 +72,7 @@ function formatArray(code: string, format: ArrayFormat): string | undefined {
     entries.push(`${key[0]}${value}`);
     i = valueEnd;
     // `\s*,?` always matches.
-    const separator = matchSticky(SEPARATOR, code, i)![0];
+    const separator = matchSticky(SEPARATOR, code, i)?.[0] ?? '';
     if (separator.includes('\n')) return undefined;
     i += separator.length;
   }

@@ -497,7 +497,7 @@ function getAttribute(tag: string, name: string): string | undefined {
         i = end;
       } else {
         // `[^\s>]*` always matches.
-        value = matchSticky(/[^\s>]*/y, tag, i)![0];
+        value = matchSticky(/[^\s>]*/y, tag, i)?.[0] ?? '';
         i += value.length;
       }
     }

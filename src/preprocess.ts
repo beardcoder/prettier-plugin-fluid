@@ -294,12 +294,11 @@ function handle(context: Context, token: Token): boolean {
       return true;
     case 'viewHelperTag':
       return viewHelperTag(context, token);
-    case 'rawTextElement':
-      rawTextElement(context, token.body);
-
-      // Attributes are scanned by the main loop.
-      return false;
   }
+  rawTextElement(context, token.body);
+
+  // Attributes are scanned by the main loop.
+  return false;
 }
 
 function flush(context: Context, until: number): void {

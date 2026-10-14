@@ -163,8 +163,8 @@ The package ships TypeScript declarations. In a `prettier.config.ts`, the
 plugin's options are typed with `FluidOptions`:
 
 ```ts
-import type { Config } from 'prettier';
 import type { FluidOptions } from '@beardcoder/prettier-plugin-fluid';
+import type { Config } from 'prettier';
 
 const config: Config & FluidOptions = {
   plugins: ['@beardcoder/prettier-plugin-fluid'],

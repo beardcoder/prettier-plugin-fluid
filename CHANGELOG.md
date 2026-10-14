@@ -8,6 +8,12 @@ breaking change is published automatically. Entries are generated from
 [release-it](https://github.com/release-it/release-it) with
 [conventional-changelog](https://github.com/conventional-changelog/conventional-changelog).
 
+## [0.12.4](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.12.3...v0.12.4) (2026-10-14)
+
+### Bug Fixes
+
+- move the lines of f:comment content with its indentation ([0e096c6](https://github.com/beardcoder/prettier-plugin-fluid/commit/0e096c6bc3007b2f837bdeeb5722d1ed8c4bcf87))
+
 ## [0.12.3](https://github.com/beardcoder/prettier-plugin-fluid/compare/v0.12.2...v0.12.3) (2026-10-01)
 
 ### Bug Fixes

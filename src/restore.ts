@@ -14,7 +14,7 @@ import {
   scanTag,
   skipQuoted,
 } from './lexer.js';
-import type { Fragment, RawTextTags, RestoreState, TagLayout } from './types.js';
+import type { RawTextTags, RestoreState, TagLayout } from './types.js';
 
 /** Prettier's defaults. */
 const DEFAULT_LAYOUT: TagLayout = { tabWidth: 2, useTabs: false, bracketSameLine: false };
@@ -43,16 +43,20 @@ export function restore(formatted: string, state: RestoreState, layout = DEFAULT
 
         return match;
       }
-      if (!fragment.comment) {
+      const { source, indent, comment } = fragment;
+      if (!comment) {
         counts[Number(id)]++;
-        const source = reindent(fragment, lineIndent(text, offset));
+        const moved = reindent(source, indent, lineIndent(text, offset), linesStartingInString(source));
 
-        return `${open ?? ''}${source}${close ?? ''}`;
+        return `${open ?? ''}${moved}${close ?? ''}`;
       }
       if (open && close) {
         counts[Number(id)]++;
+        if (comment === 'verbatim') return source;
+        // A closing tag on its own line marks the indent the content is relative to.
+        const closingIndent = /\n([ \t]*)<\/f:comment\s*>$/.exec(source)?.[1].length;
 
-        return fragment.source;
+        return reindent(source, closingIndent ?? indent, lineIndent(text, offset));
       }
       unwrapped.push(fragment.source);
 
@@ -200,17 +204,19 @@ function skipElement(html: string, index: number): number {
 }
 
 /**
- * Moves the continuation lines of a multi-line expression by the change in
+ * Moves the continuation lines of multi-line code by the change in
  * indentation of its first line, keeping their relative layout.
+ *
+ * @param indent The indentation the continuation lines are relative to.
+ * @param inString For each line: whether it starts inside a string literal,
+ *   whose whitespace is output, so the line stays as it is.
  */
-function reindent({ source, indent }: Fragment, newIndent: string): string {
+function reindent(source: string, indent: number, newIndent: string, inString: boolean[] = []): string {
   const delta = newIndent.length - indent;
   if (delta === 0 || !source.includes('\n')) return source;
   const [first, ...rest] = source.split('\n');
   const unit = newIndent.includes('\t') ? '\t' : ' ';
-  const inString = linesStartingInString(source);
   const moved = rest.map((line, index) => {
-    // Whitespace inside a string literal is output; leave those lines alone.
     if (line.trim() === '' || inString[index + 1]) return line;
     if (delta > 0) return unit.repeat(delta) + line;
     const removable = /^[ \t]*/.exec(line)?.[0].length ?? 0;

@@ -396,8 +396,33 @@ describe('f:comment', () => {
   test('content is kept verbatim, even if it is broken HTML', async () => {
     await assertFormat(
       `<div><f:comment>\n  <p>unclosed <b>{old -> f:x()\n</f:comment><p>a</p></div>`,
-      `<div>\n  <f:comment>\n  <p>unclosed <b>{old -> f:x()\n</f:comment>\n  <p>a</p>\n</div>\n`,
+      `<div>\n  <f:comment>\n    <p>unclosed <b>{old -> f:x()\n  </f:comment>\n  <p>a</p>\n</div>\n`,
     );
+  });
+
+  test('lines move with the indentation of the comment', async () => {
+    await assertFormat(
+      `<div>\n        <f:comment>\n            <!-- Usage:\n\n             <my:button\n                 id="a"\n             />\n             -->\n        </f:comment>\n</div>`,
+      `<div>\n  <f:comment>\n      <!-- Usage:\n\n       <my:button\n           id="a"\n       />\n       -->\n  </f:comment>\n</div>\n`,
+    );
+    await assertFormat(
+      `<div>\n<f:comment>\n  a\n    b\n</f:comment>\n</div>`,
+      `<div>\n\t<f:comment>\n\t  a\n\t    b\n\t</f:comment>\n</div>\n`,
+      { useTabs: true },
+    );
+  });
+
+  test('a closing tag on its own line sets the indentation of the content', async () => {
+    // Repairs comments whose opening tag moved without their content.
+    await assertFormat(
+      `<f:comment>\n        <!-- a\n         b -->\n    </f:comment>\n`,
+      `<f:comment>\n    <!-- a\n     b -->\n</f:comment>\n`,
+    );
+  });
+
+  test('stays as written after prettier-ignore', async () => {
+    const source = `<div>\n  <!-- prettier-ignore -->\n  <f:comment>\n      a\n        </f:comment>\n</div>\n`;
+    await assertFormat(source, source);
   });
 
   test('nested and self-closing comments', async () => {

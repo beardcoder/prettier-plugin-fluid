@@ -14,8 +14,11 @@ export interface SourceRange {
 export interface Fragment {
   /** Original template code. */
   source: string;
-  /** Whether the placeholder is wrapped in `<!-- -->`. */
-  comment: boolean;
+  /**
+   * Whether the placeholder is wrapped in `<!-- -->`: code kept exactly as
+   * written, or an `<f:comment>` whose lines move with its new indent.
+   */
+  comment: false | 'verbatim' | 'fluidComment';
   /**
    * Leading whitespace of the source line the code starts on; continuation
    * lines of expressions move with the new indent.

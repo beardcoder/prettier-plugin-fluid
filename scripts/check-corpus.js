@@ -127,17 +127,22 @@ function fluidRawTextBodies(text) {
 export function protectedContent(text) {
   const lf = text.replace(/\r\n?/g, '\n');
   const { fragments } = preprocess(lf).state;
-  /** @param {boolean} comment @param {(source: string) => string} map */
-  const occurrences = (comment, map) =>
+  /** @param {(fragment: (typeof fragments)[number]) => string | undefined} map Undefined skips the fragment. */
+  const occurrences = (map) =>
     sorted(
-      fragments.flatMap((fragment) =>
-        fragment.comment === comment ? Array(fragment.count).fill(map(fragment.source)) : [],
-      ),
+      fragments.flatMap((fragment) => {
+        const value = map(fragment);
+
+        return value === undefined ? [] : Array(fragment.count).fill(value);
+      }),
     );
 
   return {
-    expressions: occurrences(false, normalizeExpression),
-    'verbatim content': occurrences(true, (source) => source),
+    expressions: occurrences(({ source, comment }) => (comment ? undefined : normalizeExpression(source))),
+    // The lines of `<f:comment>` elements move with their new indentation.
+    'verbatim content': occurrences(({ source, comment }) =>
+      comment === 'fluidComment' ? source.replace(/\n[ \t]+/g, '\n') : comment ? source : undefined,
+    ),
     'ViewHelper tags': sorted(lf.match(/<\/?[a-zA-Z0-9.]*:[a-zA-Z0-9.]+/g) ?? []),
     'script/style bodies with Fluid': sorted(fluidRawTextBodies(lf)),
   };

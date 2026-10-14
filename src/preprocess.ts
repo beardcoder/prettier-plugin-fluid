@@ -6,7 +6,7 @@
  *   including arbitrarily nested inline syntax, is swapped for opaque
  *   placeholders of the same width, so it is never re-wrapped or re-quoted.
  * - `<f:comment>` elements become HTML comments, so their (possibly broken)
- *   content is kept verbatim.
+ *   content is kept verbatim; only its lines move with the new indentation.
  * - Structural ViewHelpers (`<f:if>`, `<f:for>`, ...) get a
  *   `<!-- display: block -->` hint; Prettier would treat unknown namespaced
  *   tags as inline elements otherwise.
@@ -275,7 +275,7 @@ function handle(context: Context, token: Token): boolean {
       return replace(context, token.end, false, format && ((code) => formatArrays(code, format, inArguments)));
     }
     case 'ignoreRange':
-      return replace(context, token.end, true);
+      return replace(context, token.end, 'verbatim');
     case 'comment':
     case 'cdata':
       // Fluid and Prettier both keep it as-is.
@@ -283,7 +283,7 @@ function handle(context: Context, token: Token): boolean {
 
       return true;
     case 'fluidComment':
-      replace(context, token.end, true);
+      replace(context, token.end, followsIgnoreDirective(context.source, context.pos) ? 'verbatim' : 'fluidComment');
       if (token.directive) {
         // Prettier only sees the placeholder, so the directive is repeated
         // as a hint that applies to the next node. The line break keeps the
@@ -333,7 +333,12 @@ function emit(context: Context, text: string, end: number): number {
  * @param transform Formats the code; the placeholder gets the width of the
  *   result.
  */
-function replace(context: Context, end: number, comment: boolean, transform?: (code: string) => string): true {
+function replace(
+  context: Context,
+  end: number,
+  comment: Fragment['comment'],
+  transform?: (code: string) => string,
+): true {
   const original = context.source.slice(context.pos, end);
   const code = transform ? transform(original) : original;
   const existing = comment ? undefined : context.placeholders.get(code);
@@ -379,7 +384,7 @@ function viewHelperTag(context: Context, tag: ViewHelperTag): boolean {
   if (asset(context, tag, name)) return true;
   if (!tag.closing && context.isVerbatimViewHelper(name)) {
     const element = findViewHelperElement(context.source, context.pos, name);
-    if (element) return replace(context, element.end, true);
+    if (element) return replace(context, element.end, 'verbatim');
   }
   if (!tag.closing && context.pos >= context.checkedUntil) {
     const element = findViewHelperElement(context.source, context.pos, name);
@@ -387,7 +392,7 @@ function viewHelperTag(context: Context, tag: ViewHelperTag): boolean {
       const body = context.source.slice(element.body.start, element.body.end);
       // A conditional wrapper like `<f:if …><div></f:if>` cannot be
       // formatted as HTML; keep the whole element as written.
-      if (!isBalancedHtml(body)) return replace(context, element.end, true);
+      if (!isBalancedHtml(body)) return replace(context, element.end, 'verbatim');
       context.checkedUntil = element.end;
     }
   }
@@ -437,7 +442,7 @@ function asset(context: Context, tag: ViewHelperTag, name: string): boolean {
   if (!htmlName || !element) return false;
   const body = context.source.slice(element.body.start, element.body.end);
   // Not valid CSS/JavaScript; keep it exactly as written.
-  if (containsFluid(body) || body.includes('<![CDATA[')) return replace(context, element.end, true);
+  if (containsFluid(body) || body.includes('<![CDATA[')) return replace(context, element.end, 'verbatim');
   startArguments(context);
   context.assetTags.set(emit(context, `<${htmlName}`, end), name);
   context.assetCloses.set(element.body.end, htmlName);
